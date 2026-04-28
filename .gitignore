@@ -1,0 +1,39 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Dependency directories
+node_modules/
+
+# Build outputs
+/dist
+/build
+coverage/
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars
+worker-configuration.d.ts
+
+# Dashboard build artifacts
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.vite/
+
+# Misc
+*.tsbuildinfo

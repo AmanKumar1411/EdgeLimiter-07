@@ -1,0 +1,36 @@
+name = "edge-limiter"
+main = "src/index.ts"
+compatibility_date = "2026-04-28"
+
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
+[[kv_namespaces]]
+binding = "CONFIG_KV"
+id = "your-kv-id"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "edge-limiter-db"
+database_id = "your-d1-id"
+
+[[queues.producers]]
+binding = "LOG_QUEUE"
+queue = "rate-limit-logs"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RateLimiter"]
+
+[[queues.consumers]]
+queue = "rate-limit-logs"
+max_batch_size = 10
+max_batch_timeout = 5
+
+[triggers]
+crons = ["0 0 * * *"]
+
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "edge_limiter_analytics"

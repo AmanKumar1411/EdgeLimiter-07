@@ -44,7 +44,7 @@ Request body:
 Check if a request is allowed. Requires x-api-key.
 
 ```bash
-curl -i -X POST http://localhost:8787/check \
+curl -i -X POST https://edge-limiter.edgeaman.workers.dev/check \
   -H "Content-Type: application/json" \
   -H "x-api-key: <your-api-key>" \
   -d '{"tenantId":"company-a","route":"login-api"}'
@@ -105,7 +105,7 @@ npx wrangler dev
 
 ## Dashboard
 
-The dashboard is a Vite app under /dashboard and points at http://localhost:8787 by default.
+The dashboard is a Vite app under /dashboard and points at https://edge-limiter.edgeaman.workers.dev by default.
 
 ```bash
 cd dashboard
@@ -124,4 +124,5 @@ npm run dev
 ```bash
 npx wrangler deploy
 ```
+
 # EdgeLimiter-07

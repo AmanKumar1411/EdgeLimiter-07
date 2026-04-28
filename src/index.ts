@@ -40,6 +40,35 @@ app.get("/health", (c) => {
   });
 });
 
+app.post("/register", async (c) => {
+  const body = await c.req.json();
+  const email = body.email;
+
+  if (!email) {
+    return c.json(
+      { error: "Email is required" },
+      400
+    );
+  }
+
+  const apiKey =
+    "sk_live_" + crypto.randomUUID().replace(/-/g, "");
+
+  await c.env.DB.prepare(`
+    INSERT INTO api_keys
+    (email, api_key, status)
+    VALUES (?, ?, 'active')
+  `)
+    .bind(email, apiKey)
+    .run();
+
+  return c.json({
+    success: true,
+    email,
+    apiKey,
+  });
+});
+
 /*
 CONFIG ROUTE
 */

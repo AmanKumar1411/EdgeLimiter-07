@@ -31,11 +31,11 @@ function App() {
   const [topKeys, setTopKeys] = useState<TopKey[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:8787/metrics")
+    fetch("https://edge-limiter.edgeaman.workers.dev/metrics")
       .then((res) => res.json())
       .then((data) => setMetrics(data));
 
-    fetch("http://localhost:8787/top-keys")
+    fetch("https://edge-limiter.edgeaman.workers.dev/top-keys")
       .then((res) => res.json())
       .then((data) => setTopKeys(data));
   }, []);

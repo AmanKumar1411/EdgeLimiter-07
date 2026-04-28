@@ -8,12 +8,12 @@ class_name = "RateLimiter"
 
 [[kv_namespaces]]
 binding = "CONFIG_KV"
-id = "your-kv-id"
+id = "6264fac76d8148638b973f56b5bc7b0d"
 
 [[d1_databases]]
-binding = "DB"
+binding = "edge_limiter_db"
 database_name = "edge-limiter-db"
-database_id = "your-d1-id"
+database_id = "f5939813-c18d-4cb3-94a7-df5f3ac39b78"
 
 [[queues.producers]]
 binding = "LOG_QUEUE"
@@ -21,7 +21,7 @@ queue = "rate-limit-logs"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RateLimiter"]
+new_sqlite_classes = ["RateLimiter"]
 
 [[queues.consumers]]
 queue = "rate-limit-logs"

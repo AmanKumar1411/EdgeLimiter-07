@@ -53,7 +53,6 @@ export function RegisterUserPanel({
     try {
       const response = await registerUser({
         email,
-        password,
         tenantId,
         role: "client",
       });

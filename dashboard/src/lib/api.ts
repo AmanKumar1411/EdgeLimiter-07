@@ -6,6 +6,8 @@ import type {
   LoginRequest,
   LoginResponse,
   MetricsResponse,
+  ResetCounterRequest,
+  ResetCounterResponse,
   RegisterRequest,
   RegisterResponse,
   RunReportResponse,
@@ -177,8 +179,8 @@ export async function runClientReport(apiKey: string) {
   });
 }
 
-export async function resetCounter(payload: { tenantId: string; route: string }, apiKey: string) {
-  return requestJson<{ success: boolean; message: string }>("/reset", {
+export async function resetCounter(payload: ResetCounterRequest, apiKey: string) {
+  return requestJson<ResetCounterResponse>("/reset", {
     method: "POST",
     headers: {
       "x-api-key": apiKey,

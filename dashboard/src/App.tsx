@@ -48,6 +48,7 @@ export default function App() {
             session.role === "super_admin" ? (
               <AdminDashboard
                 adminEmail={session.email}
+                adminApiKey={session.apiKey}
                 onLogout={handleLogout}
               />
             ) : (

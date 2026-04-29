@@ -4,6 +4,7 @@ export type Env = {
   DB: D1Database;
   LOG_QUEUE: Queue;
   ANALYTICS: AnalyticsEngineDataset;
+  AI: Ai;
 };
 
 export type Bindings = Env;

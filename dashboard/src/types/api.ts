@@ -55,6 +55,16 @@ export type CheckResponse = {
   algorithm: string;
 };
 
+export type ResetCounterRequest = {
+  tenantId: string;
+  route: string;
+};
+
+export type ResetCounterResponse = {
+  success: boolean;
+  message: string;
+};
+
 export type MetricsResponse = {
   totalRequests: number;
   blockedRequests: number;

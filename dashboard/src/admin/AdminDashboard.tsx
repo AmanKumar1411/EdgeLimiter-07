@@ -24,15 +24,23 @@ type ActivityInput = Omit<AuditItem, "id" | "time">;
 type AdminDashboardProps = {
   onLogout: () => void;
   adminEmail: string;
+  adminApiKey: string;
 };
 
-export function AdminDashboard({ onLogout, adminEmail }: AdminDashboardProps) {
+export function AdminDashboard({
+  onLogout,
+  adminEmail,
+  adminApiKey,
+}: AdminDashboardProps) {
   const [tenantId, setTenantId] = useLocalStorage(
     "edge-limiter-tenant",
     "company-a",
   );
 
-  const [apiKey, setApiKey] = useLocalStorage("edge-limiter-api-key", "");
+  const [apiKey, setApiKey] = useLocalStorage(
+    "edge-limiter-api-key",
+    adminApiKey,
+  );
 
   const [activeSection, setActiveSection] = useState(NAV_ITEMS[0].id);
 
@@ -195,7 +203,14 @@ export function AdminDashboard({ onLogout, adminEmail }: AdminDashboardProps) {
 
           <AnalyticsSection />
 
-          <OperationsSection onActivity={handleActivity} />
+          <OperationsSection
+            onActivity={handleActivity}
+            resetCounter={{
+              tenantId,
+              onTenantIdChange: setTenantId,
+              apiKey: adminApiKey,
+            }}
+          />
 
           <AuditSection activity={activity} />
         </main>

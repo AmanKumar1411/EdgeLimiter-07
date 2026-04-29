@@ -6,6 +6,22 @@ type RateLimitRequest = {
   algorithm?: string;
 };
 
+type ResetRequest = {
+  type: "reset";
+  tenantId?: string;
+  route?: string;
+};
+
+const RATE_LIMIT_STATE_KEYS = [
+  "timestamps",
+  "window",
+  "count",
+  "tokens",
+  "lastRefill",
+  "retryAfter",
+  "blockedUntil",
+];
+
 export class RateLimiter {
   state: DurableObjectState;
   env: Env;
@@ -16,36 +32,19 @@ export class RateLimiter {
   }
 
   async fetch(request: Request): Promise<Response> {
-    /*
-      RESET ENDPOINT
-      DELETE /reset
-    */
-    if (
-      request.method === "DELETE" &&
-      request.url.endsWith("/reset")
-    ) {
-      await this.state.storage.deleteAll();
+    const body =
+      (await request.json()) as RateLimitRequest | ResetRequest;
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: "Rate limit state reset",
-        }),
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+    if ((body as ResetRequest).type === "reset") {
+      return this.reset(body as ResetRequest);
     }
 
-    const body =
-      (await request.json()) as RateLimitRequest;
+    const checkBody = body as RateLimitRequest;
 
-    const limit = body.limit ?? 5;
-    const windowSeconds = body.window ?? 60;
+    const limit = checkBody.limit ?? 5;
+    const windowSeconds = checkBody.window ?? 60;
     const algorithm =
-      body.algorithm ?? "sliding_window";
+      checkBody.algorithm ?? "sliding_window";
 
     let result;
 
@@ -75,6 +74,49 @@ export class RateLimiter {
 
     return new Response(
       JSON.stringify(result),
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+
+  /*
+    Reset Counter
+  */
+  async reset(body: ResetRequest) {
+    const tenantId = body.tenantId?.trim();
+    const route = body.route?.trim();
+
+    if (!tenantId || !route) {
+      return new Response(
+        JSON.stringify({
+          error: "tenantId and route are required",
+        }),
+        {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    const rateLimitKey = `${tenantId}:${route}`;
+
+    await this.state.storage.delete([
+      ...RATE_LIMIT_STATE_KEYS,
+      ...RATE_LIMIT_STATE_KEYS.map(
+        (key) => `${rateLimitKey}:${key}`
+      ),
+    ]);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "Rate limit counter reset successfully",
+      }),
       {
         headers: {
           "Content-Type": "application/json",

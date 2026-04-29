@@ -5,6 +5,7 @@ import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
 import { runReport } from "../lib/api";
 import type { RunReportResponse } from "../types/api";
+import { ResetCounterPanel } from "./ResetCounterPanel";
 
 type OperationsSectionProps = {
   onActivity?: (entry: {
@@ -12,6 +13,11 @@ type OperationsSectionProps = {
     detail: string;
     tone?: BadgeTone;
   }) => void;
+  resetCounter?: {
+    tenantId: string;
+    onTenantIdChange: (value: string) => void;
+    apiKey: string;
+  };
 };
 
 type LoadState = "idle" | "loading" | "success" | "error";
@@ -32,7 +38,10 @@ const getRecommendationTone = (
   return "info";
 };
 
-export function OperationsSection({ onActivity }: OperationsSectionProps) {
+export function OperationsSection({
+  onActivity,
+  resetCounter,
+}: OperationsSectionProps) {
   const [report, setReport] = useState<RunReportResponse | null>(null);
   const [status, setStatus] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +68,55 @@ export function OperationsSection({ onActivity }: OperationsSectionProps) {
     }
   };
 
+  const reportPanel = (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h3 className="panel-title">Daily Abuse Report</h3>
+          <p>Investigate the highest-risk API key detected today.</p>
+        </div>
+        <Badge tone="warning">Ops</Badge>
+      </div>
+
+      {status === "error" && error ? (
+        <div className="notice notice-error">{error}</div>
+      ) : null}
+
+      {report ? (
+        <div className="detail-grid">
+          <div className="detail-card">
+            <div className="detail-label">Top API Key</div>
+            <div className="detail-value detail-key">{report.topApiKey}</div>
+          </div>
+          <div className="detail-card">
+            <div className="detail-label">Total Requests</div>
+            <div className="detail-value">{report.totalRequests}</div>
+          </div>
+          <div className="detail-card">
+            <div className="detail-label">Blocked Requests</div>
+            <div className="detail-value">{report.blockedRequests}</div>
+          </div>
+          <div className="detail-card">
+            <div className="detail-label">Abuse Score</div>
+            <div className="detail-value">{report.abuseScore}</div>
+          </div>
+          <div className="detail-card span-12">
+            <div className="detail-label">Recommendation</div>
+            <div className="detail-value">
+              <Badge tone={getRecommendationTone(report.recommendation)}>
+                {report.recommendation}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="notice">
+          Run the report to surface the most abusive API key today.
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <section id="operations" className="section section-anchor">
       <div className="section-head">
@@ -76,52 +134,19 @@ export function OperationsSection({ onActivity }: OperationsSectionProps) {
         </div>
       </div>
 
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h3 className="panel-title">Daily Abuse Report</h3>
-            <p>Investigate the highest-risk API key detected today.</p>
-          </div>
-          <Badge tone="warning">Ops</Badge>
+      {resetCounter ? (
+        <div className="panel-grid">
+          {reportPanel}
+          <ResetCounterPanel
+            tenantId={resetCounter.tenantId}
+            onTenantIdChange={resetCounter.onTenantIdChange}
+            apiKey={resetCounter.apiKey}
+            onActivity={onActivity}
+          />
         </div>
-
-        {status === "error" && error ? (
-          <div className="notice notice-error">{error}</div>
-        ) : null}
-
-        {report ? (
-          <div className="detail-grid">
-            <div className="detail-card">
-              <div className="detail-label">Top API Key</div>
-              <div className="detail-value detail-key">{report.topApiKey}</div>
-            </div>
-            <div className="detail-card">
-              <div className="detail-label">Total Requests</div>
-              <div className="detail-value">{report.totalRequests}</div>
-            </div>
-            <div className="detail-card">
-              <div className="detail-label">Blocked Requests</div>
-              <div className="detail-value">{report.blockedRequests}</div>
-            </div>
-            <div className="detail-card">
-              <div className="detail-label">Abuse Score</div>
-              <div className="detail-value">{report.abuseScore}</div>
-            </div>
-            <div className="detail-card span-12">
-              <div className="detail-label">Recommendation</div>
-              <div className="detail-value">
-                <Badge tone={getRecommendationTone(report.recommendation)}>
-                  {report.recommendation}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="notice">
-            Run the report to surface the most abusive API key today.
-          </div>
-        )}
-      </section>
+      ) : (
+        reportPanel
+      )}
     </section>
   );
 }

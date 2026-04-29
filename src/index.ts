@@ -4,8 +4,18 @@ import { RateLimiter } from "./durable-objects/RateLimiter";
 import metrics from "./api/metrics";
 import topKeys from "./api/topKeys";
 import { pushToQueue } from "./queue/producer";
-import { queue } from "./queue/consumer";
+import {
+  ensureSecurityLogsTable,
+  queue as consumeQueue,
+} from "./queue/consumer";
+import { generateAttackIntelligence } from "./security/intelligence";
 import type { Bindings, Env } from "./types/env";
+import type {
+  SecurityLogEvent,
+  SecurityLogRow,
+  SecurityQueueEvent,
+  TopAbusiveIpRow,
+} from "./types/security";
 
 type RateLimitResult = {
   allowed: boolean;
@@ -13,6 +23,21 @@ type RateLimitResult = {
   retryAfter: number;
   algorithm: string;
 };
+
+type ResetResult = {
+  success: boolean;
+  message: string;
+};
+
+type CheckRequestBody = {
+  tenantId?: string;
+  route?: string;
+};
+
+type RequestSecurityMetadata = Pick<
+  SecurityLogEvent,
+  "ipAddress" | "country" | "colo" | "userAgent"
+>;
 
 type LoginUserRow = {
   id: number;
@@ -66,6 +91,56 @@ async function getUserByApiKey(env: Env, apiKey: string) {
       api_key: string;
       status: string;
     }>();
+}
+
+function getRequestSecurityMetadata(
+  request: Request
+): RequestSecurityMetadata {
+  const cf = request.cf as
+    | { country?: unknown; colo?: unknown }
+    | undefined;
+
+  return {
+    ipAddress:
+      request.headers.get("CF-Connecting-IP") ||
+      request.headers.get("x-forwarded-for"),
+    country:
+      typeof cf?.country === "string"
+        ? cf.country
+        : null,
+    colo:
+      typeof cf?.colo === "string"
+        ? cf.colo
+        : null,
+    userAgent: request.headers.get("user-agent"),
+  };
+}
+
+async function queueCheckSecurityLog(
+  env: Env,
+  metadata: RequestSecurityMetadata,
+  entry: {
+    tenantId: string;
+    apiKey: string;
+    route: string;
+    allowed: boolean;
+    remaining: number;
+    retryAfter: number;
+    reason: string | null;
+  }
+) {
+  await pushToQueue(env, {
+    type: "security_log",
+    tenantId: entry.tenantId,
+    apiKey: entry.apiKey,
+    route: entry.route,
+    timestamp: new Date().toISOString(),
+    allowed: entry.allowed,
+    remaining: entry.remaining,
+    retryAfter: entry.retryAfter,
+    reason: entry.reason,
+    ...metadata,
+  });
 }
 
 app.use(
@@ -318,13 +393,101 @@ app.post("/config", async (c) => {
   });
 });
 
+// Put this helper ABOVE app.post("/check")
+
+async function queueCheckSecurityLog(
+  env: Env,
+  metadata: {
+    ipAddress: string;
+    country: string;
+    colo: string;
+    userAgent: string;
+  },
+  payload: {
+    tenantId: string;
+    apiKey: string;
+    route: string;
+    allowed: boolean;
+    remaining: number;
+    retryAfter: number;
+    reason: string | null;
+  }
+) {
+  await env.LOG_QUEUE.send({
+    type: "security_log",
+
+    tenantId: payload.tenantId,
+    apiKey: payload.apiKey,
+    route: payload.route,
+
+    ipAddress: metadata.ipAddress || "unknown",
+    country: metadata.country || "unknown",
+    colo: metadata.colo || "unknown",
+    userAgent: metadata.userAgent || "unknown",
+
+    allowed: payload.allowed,
+    remaining: payload.remaining,
+    retryAfter: payload.retryAfter,
+
+    reason: payload.reason ?? null,
+
+    timestamp: new Date().toISOString(),
+  });
+}
 /*
 CHECK ROUTE
 */
+
 app.post("/check", async (c) => {
+  const metadata = getRequestSecurityMetadata(c.req.raw);
   const apiKey = c.req.header("x-api-key");
 
+  let body: CheckRequestBody;
+
+  try {
+    body = (await c.req.json()) as CheckRequestBody;
+  } catch {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId: "",
+        apiKey: apiKey || "",
+        route: "",
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "invalid_request_body",
+      })
+    );
+
+    return c.json(
+      { error: "Invalid JSON body" },
+      400
+    );
+  }
+
+  const tenantId =
+    typeof body.tenantId === "string"
+      ? body.tenantId.trim()
+      : "";
+
+  const route =
+    typeof body.route === "string"
+      ? body.route.trim()
+      : "";
+
   if (!apiKey) {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId,
+        apiKey: "",
+        route,
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "api_key_missing",
+      })
+    );
+
     return c.json(
       { error: "API key missing" },
       401
@@ -340,18 +503,37 @@ app.post("/check", async (c) => {
     .first();
 
   if (!existingKey) {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId,
+        apiKey,
+        route,
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "unauthorized_api_key",
+      })
+    );
+
     return c.json(
       { error: "Unauthorized" },
       401
     );
   }
 
-  const body = await c.req.json();
-
-  const tenantId = body.tenantId;
-  const route = body.route;
-
   if (!tenantId || !route) {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId,
+        apiKey,
+        route,
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "tenant_route_missing",
+      })
+    );
+
     return c.json(
       {
         error: "tenantId and route are required",
@@ -362,9 +544,22 @@ app.post("/check", async (c) => {
 
   const configKey = `${tenantId}:${route}`;
 
-  const config = await c.env.CONFIG_KV.get(configKey);
+  const config =
+    await c.env.CONFIG_KV.get(configKey);
 
   if (!config) {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId,
+        apiKey,
+        route,
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "config_not_found",
+      })
+    );
+
     return c.json(
       {
         error: `No config found for ${configKey}`,
@@ -375,8 +570,11 @@ app.post("/check", async (c) => {
 
   const parsedConfig = JSON.parse(config);
 
-  const id = c.env.RATE_LIMITER.idFromName(configKey);
-  const stub = c.env.RATE_LIMITER.get(id);
+  const id =
+    c.env.RATE_LIMITER.idFromName(configKey);
+
+  const stub =
+    c.env.RATE_LIMITER.get(id);
 
   const response = await stub.fetch(
     "http://do/check",
@@ -385,7 +583,8 @@ app.post("/check", async (c) => {
       body: JSON.stringify({
         limit: parsedConfig.limit,
         window: parsedConfig.window,
-        algorithm: parsedConfig.algorithm,
+        algorithm:
+          parsedConfig.algorithm,
       }),
     }
   );
@@ -393,11 +592,20 @@ app.post("/check", async (c) => {
   const result =
     (await response.json()) as RateLimitResult;
 
-  await pushToQueue(
-    c.env,
-    apiKey,
-    result.allowed ? 0 : 1
+  c.executionCtx.waitUntil(
+    queueCheckSecurityLog(c.env, metadata, {
+      tenantId,
+      apiKey,
+      route,
+      allowed: result.allowed,
+      remaining: result.remaining,
+      retryAfter: result.retryAfter,
+      reason: result.allowed
+        ? null
+        : "rate_limit_exceeded",
+    })
   );
+
   c.executionCtx.waitUntil(
     Promise.resolve(
       c.env.ANALYTICS.writeDataPoint({
@@ -410,9 +618,7 @@ app.post("/check", async (c) => {
         doubles: [
           result.allowed ? 1 : 0,
         ],
-        indexes: [
-          apiKey,
-        ],
+        indexes: [apiKey],
       })
     )
   );
@@ -426,8 +632,12 @@ app.post("/check", async (c) => {
     },
     result.allowed ? 200 : 429,
     {
-      "X-RateLimit-Limit": String(parsedConfig.limit),
-      "X-RateLimit-Remaining": String(result.remaining),
+      "X-RateLimit-Limit": String(
+        parsedConfig.limit
+      ),
+      "X-RateLimit-Remaining": String(
+        result.remaining
+      ),
       "X-RateLimit-Reset": String(
         Math.floor(Date.now() / 1000) +
           parsedConfig.window
@@ -529,6 +739,137 @@ app.get("/client/report", async (c) => {
   });
 });
 
+app.get("/security-report", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  const tenantId = c.req.query("tenantId")?.trim();
+
+  if (!apiKey) {
+    return c.json({ error: "API key missing" }, 401);
+  }
+
+  if (!tenantId) {
+    return c.json(
+      { error: "tenantId is required" },
+      400
+    );
+  }
+
+  const owner = await getUserByApiKey(c.env, apiKey);
+  if (!owner || owner.status !== "active") {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  if (owner.role === "client" && owner.tenant_id !== tenantId) {
+    return c.json({ error: "Forbidden for this tenant" }, 403);
+  }
+
+  await ensureSecurityLogsTable(c.env);
+
+  const recentLogsResult = await c.env.DB.prepare(`
+    SELECT
+      id,
+      tenant_id,
+      api_key,
+      route,
+      ip_address,
+      country,
+      colo,
+      user_agent,
+      allowed,
+      remaining,
+      retry_after,
+      reason,
+      created_at
+    FROM security_logs
+    WHERE tenant_id = ?
+    ORDER BY datetime(created_at) DESC
+    LIMIT 50
+  `)
+    .bind(tenantId)
+    .all<SecurityLogRow>();
+
+  const recentLogs =
+    recentLogsResult.results ?? [];
+
+  const topIpResult = await c.env.DB.prepare(`
+    WITH tenant_ips AS (
+      SELECT DISTINCT ip_address
+      FROM security_logs
+      WHERE tenant_id = ?
+        AND ip_address IS NOT NULL
+        AND ip_address <> ''
+    )
+    SELECT
+      l.ip_address,
+      MAX(l.country) AS country,
+      MAX(l.colo) AS colo,
+      COUNT(*) AS total_requests,
+      SUM(CASE WHEN l.allowed = 0 THEN 1 ELSE 0 END) AS blocked_requests,
+      SUM(CASE WHEN l.tenant_id = ? THEN 1 ELSE 0 END) AS tenant_requests,
+      SUM(CASE WHEN l.tenant_id = ? AND l.allowed = 0 THEN 1 ELSE 0 END) AS tenant_blocked_requests,
+      COUNT(DISTINCT l.tenant_id) AS tenant_count,
+      MAX(l.created_at) AS last_seen
+    FROM security_logs l
+    INNER JOIN tenant_ips ti
+      ON ti.ip_address = l.ip_address
+    WHERE l.created_at >= datetime('now', '-24 hours')
+    GROUP BY l.ip_address
+    ORDER BY tenant_blocked_requests DESC,
+      blocked_requests DESC,
+      total_requests DESC
+    LIMIT 10
+  `)
+    .bind(tenantId, tenantId, tenantId)
+    .all<TopAbusiveIpRow>();
+
+  const topAbusiveIps = (
+    topIpResult.results ?? []
+  ).map((row) => ({
+    ipAddress: row.ip_address,
+    country: row.country,
+    colo: row.colo,
+    totalRequests: Number(row.total_requests || 0),
+    blockedRequests: Number(row.blocked_requests || 0),
+    tenantRequests: Number(row.tenant_requests || 0),
+    tenantBlockedRequests: Number(
+      row.tenant_blocked_requests || 0
+    ),
+    tenantCount: Number(row.tenant_count || 0),
+    lastSeen: row.last_seen,
+  }));
+
+  const intelligence =
+    await generateAttackIntelligence(
+      c.env,
+      tenantId,
+      recentLogs,
+      topIpResult.results ?? []
+    );
+
+  return c.json({
+    tenantId,
+    recentLogs: recentLogs.map((log) => ({
+      id: log.id,
+      tenantId: log.tenant_id,
+      apiKey: log.api_key,
+      route: log.route,
+      ipAddress: log.ip_address,
+      country: log.country,
+      colo: log.colo,
+      userAgent: log.user_agent,
+      allowed: Boolean(log.allowed),
+      remaining: Number(log.remaining || 0),
+      retryAfter: Number(log.retry_after || 0),
+      reason: log.reason,
+      createdAt: log.created_at,
+    })),
+    topAbusiveIps,
+    aiSummary: intelligence.aiSummary,
+    abuseScore: intelligence.abuseScore,
+    recommendation: intelligence.recommendation,
+  });
+});
+
 app.post("/reset", async (c) => {
   const apiKey = c.req.header("x-api-key");
   if (!apiKey) {
@@ -559,16 +900,25 @@ app.post("/reset", async (c) => {
   const configKey = `${tenantId}:${route}`;
   const id = c.env.RATE_LIMITER.idFromName(configKey);
   const stub = c.env.RATE_LIMITER.get(id);
-  const response = await stub.fetch("http://do/reset", { method: "DELETE" });
+  const response = await stub.fetch("http://do/reset", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "reset",
+      tenantId,
+      route,
+    }),
+  });
 
   if (!response.ok) {
     return c.json({ error: "Failed to reset counters" }, 500);
   }
 
-  return c.json({
-    success: true,
-    message: `Counter reset for ${configKey}`,
-  });
+  const result = (await response.json()) as ResetResult;
+
+  return c.json(result);
 });
 app.get("/run-report", async (c) => {
   const result = await c.env.DB.prepare(`
@@ -623,50 +973,11 @@ export default {
   fetch: app.fetch,
 
   async queue(
-    batch: MessageBatch<any>,
+    batch: MessageBatch<SecurityQueueEvent>,
     env: Env,
     ctx: ExecutionContext
   ) {
-    for (const message of batch.messages) {
-      const { apiKey, blocked } =
-        message.body;
-
-      const existingLog =
-        await env.DB.prepare(`
-          SELECT * FROM logs_summary
-          WHERE api_key = ?
-        `)
-          .bind(apiKey)
-          .first();
-
-      if (existingLog) {
-        await env.DB.prepare(`
-          UPDATE logs_summary
-          SET
-            total_requests = total_requests + 1,
-            blocked_requests =
-              blocked_requests + ?,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE api_key = ?
-        `)
-          .bind(blocked, apiKey)
-          .run();
-      } else {
-        await env.DB.prepare(`
-          INSERT INTO logs_summary
-          (
-            api_key,
-            total_requests,
-            blocked_requests
-          )
-          VALUES (?, ?, ?)
-        `)
-          .bind(apiKey, 1, blocked)
-          .run();
-      }
-
-      message.ack();
-    }
+    await consumeQueue(batch, env);
   },
 
   async scheduled(

@@ -34,3 +34,6 @@ crons = ["0 0 * * *"]
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
 dataset = "edge_limiter_analytics"
+
+[ai]
+binding = "AI"

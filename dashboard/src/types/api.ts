@@ -1,8 +1,7 @@
-export type RegisterRequest = {
+type RegisterRequest = {
   email: string;
-  password: string;
   tenantId: string;
-  role?: "client";
+  role?: string;
 };
 
 export type RegisterResponse = {

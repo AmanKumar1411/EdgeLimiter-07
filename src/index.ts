@@ -39,14 +39,6 @@ type RequestSecurityMetadata = Pick<
   "ipAddress" | "country" | "colo" | "userAgent"
 >;
 
-// type LoginUserRow = {
-//   id: number;
-//   email: string;
-//   password: string;
-//   role: string;
-//   tenant_id: string;
-//   api_key: string;
-// };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -54,17 +46,6 @@ function isValidRole(role: string | undefined) {
   return role === "client" || role === "super_admin";
 }
 
-// function toHex(buffer: ArrayBuffer) {
-//   return Array.from(new Uint8Array(buffer))
-//     .map((b) => b.toString(16).padStart(2, "0"))
-//     .join("");
-// }
-
-// async function hashPassword(password: string) {
-//   const input = new TextEncoder().encode(password);
-//   const digest = await crypto.subtle.digest("SHA-256", input);
-//   return toHex(digest);
-// }
 
 async function getUserByApiKey(env: Env, apiKey: string) {
   return env.DB.prepare(
@@ -238,84 +219,6 @@ VALUES(?, ?, 'active')
   });
 });
 
-
-
-// app.post("/login", async (c) => {
-//   const body = (await c.req.json()) as {
-//     email?: string;
-//     password?: string;
-//   };
-
-//   const email = body.email?.trim().toLowerCase();
-//   const password = body.password?.trim();
-
-//   if (!email || !password) {
-//     return c.json(
-//       {
-//         error: "email and password are required",
-//       },
-//       400
-//     );
-//   }
-
-//   const user = await c.env.DB.prepare(
-//     `
-//       SELECT
-//         u.id,
-//         u.email,
-//         u.password,
-//         u.role,
-//         u.tenant_id,
-//         a.api_key
-//       FROM users u
-//       LEFT JOIN api_keys a
-//         ON a.user_id = u.id
-//         AND a.status = 'active'
-//       WHERE u.email = ?
-//       ORDER BY a.id DESC
-//       LIMIT 1
-//     `
-//   )
-//     .bind(email)
-//     .first<LoginUserRow>();
-
-//   if (!user) {
-//     return c.json(
-//       {
-//         error: "Invalid credentials",
-//       },
-//       401
-//     );
-//   }
-
-//   const passwordHash = await hashPassword(password);
-//   if (passwordHash !== user.password) {
-//     return c.json(
-//       {
-//         error: "Invalid credentials",
-//       },
-//       401
-//     );
-//   }
-
-//   if (!user.api_key) {
-//     const generatedApiKey = "sk_live_" + crypto.randomUUID().replace(/-/g, "");
-//     await c.env.DB.prepare(
-//       `INSERT INTO api_keys (user_id, api_key, status) VALUES (?, ?, 'active')`
-//     )
-//       .bind(user.id, generatedApiKey)
-//       .run();
-//     user.api_key = generatedApiKey;
-//   }
-
-//   return c.json({
-//     success: true,
-//     role: user.role,
-//     tenantId: user.tenant_id,
-//     apiKey: user.api_key,
-//     email: user.email,
-//   });
-// });
 
 /*
 CONFIG ROUTE

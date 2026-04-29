@@ -111,7 +111,6 @@ export default function Dashboard() {
           {/* Live Protection Tester */}
           <HeroTester
             tenantId={tenantId}
-            onTenantIdChange={setTenantId}
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
             onActivity={handleActivity}

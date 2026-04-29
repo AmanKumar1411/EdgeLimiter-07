@@ -170,7 +170,6 @@ export function AdminDashboard({
         <main className="content">
           <HeroTester
             tenantId={tenantId}
-            onTenantIdChange={setTenantId}
             apiKey={apiKey}
             onApiKeyChange={setApiKey}
             onActivity={handleActivity}

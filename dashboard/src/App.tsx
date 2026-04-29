@@ -1,66 +1,42 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
-import { getSession, clearSession } from "./auth/session";
+import LandingPage from "./pages/LandingPage";
+import RegisterPage from "./pages/RegisterPage";
+import LoginPage from "./pages/LoginPage";
+import AdminLogin from "./pages/AdminLogin";
+import ClientDashboard from "./pages/ClientDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import NotFound from "./pages/NotFound";
 
-import { LandingPage } from "./pages/LandingPage";
-import { RegisterPage } from "./pages/RegisterPage";
-import { LoginPage } from "./pages/LoginPage";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
-import Dashboard from "./Dashboard";
-import { AdminDashboard } from "./admin/AdminDashboard";
+const App = () => (
+  <Routes>
+    <Route path="/" element={<LandingPage />} />
+    <Route path="/register" element={<RegisterPage />} />
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/admin-login" element={<AdminLogin />} />
 
-export default function App() {
-  const session = getSession();
+    <Route
+      path="/dashboard"
+      element={
+        <ProtectedRoute requireRole="client">
+          <ClientDashboard />
+        </ProtectedRoute>
+      }
+    />
 
-  const handleLogout = () => {
-    clearSession();
-    window.location.href = "/";
-  };
+    <Route
+      path="/admin"
+      element={
+        <ProtectedRoute requireRole="super_admin">
+          <AdminDashboard />
+        </ProtectedRoute>
+      }
+    />
 
-  return (
-    <Routes>
-      {/* Public */}
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/login" element={<LoginPage />} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
 
-      {/* Client Only */}
-      <Route
-        path="/dashboard"
-        element={
-          session ? (
-            session.role === "client" ? (
-              <Dashboard />
-            ) : (
-              <Navigate to="/admin" replace />
-            )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      {/* Admin Only */}
-      <Route
-        path="/admin"
-        element={
-          session ? (
-            session.role === "super_admin" ? (
-              <AdminDashboard
-                adminEmail={session.email}
-                adminApiKey={session.apiKey}
-                onLogout={handleLogout}
-              />
-            ) : (
-              <Navigate to="/dashboard" replace />
-            )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-}
+export default App;

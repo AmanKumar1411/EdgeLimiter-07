@@ -1,180 +1,100 @@
 import { useState } from "react";
-
-import type { BadgeTone } from "../components/Badge";
-import { Badge } from "../components/Badge";
-import { Button } from "../components/Button";
-import { runReport } from "../lib/api";
-import type { RunReportResponse } from "../types/api";
-import { ResetCounterPanel } from "./ResetCounterPanel";
-
-type OperationsSectionProps = {
-  onActivity?: (entry: {
-    title: string;
-    detail: string;
-    tone?: BadgeTone;
-  }) => void;
-  resetCounter?: {
-    tenantId: string;
-    onTenantIdChange: (value: string) => void;
-    apiKey: string;
-  };
-};
-
-type LoadState = "idle" | "loading" | "success" | "error";
-
-const getRecommendationTone = (
-  recommendation: string | undefined,
-): BadgeTone => {
-  if (!recommendation) {
-    return "neutral";
-  }
-
-  const value = recommendation.toLowerCase();
-
-  if (value.includes("block")) {
-    return "danger";
-  }
-
-  if (value.includes("monitor")) {
-    return "warning";
-  }
-
-  return "info";
-};
+import { Trash2, CheckCircle2 } from "lucide-react";
+import { resetCounter, type Session } from "../lib/api";
+import { Spinner } from "../components/Loading";
+import { Field, ErrorAlert } from "../pages/RegisterPage";
+import { logActivity } from "../lib/activity";
 
 export function OperationsSection({
-  onActivity,
-  resetCounter,
-}: OperationsSectionProps) {
-  const [report, setReport] = useState<RunReportResponse | null>(null);
-
-  const [status, setStatus] = useState<LoadState>("idle");
-
+  session,
+  onTenantChange,
+}: {
+  session: Session;
+  onTenantChange: (id: string) => void;
+}) {
+  const [tenantId, setTenantId] = useState(session.tenantId);
+  const [route, setRoute] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const [lastRun, setLastRun] = useState<string | null>(null);
-
-  const handleRunReport = async () => {
-    setStatus("loading");
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setError(null);
-
+    setSuccess(null);
+    setLoading(true);
     try {
-      const data = await runReport();
-
-      setReport(data);
-      setLastRun(new Date().toLocaleTimeString());
-      setStatus("success");
-
-      onActivity?.({
-        title: "Abuse report generated",
-        detail: data.topApiKey,
-        tone: getRecommendationTone(data.recommendation),
+      const response = await resetCounter(
+        { tenantId: tenantId.trim(), route: route.trim() },
+        session.apiKey,
+      );
+      setSuccess(response.message || "Counter reset successfully.");
+      onTenantChange(tenantId.trim());
+      logActivity({
+        title: "Counter reset",
+        detail: `${tenantId} | ${route}`,
+        tone: "warning",
       });
+      setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Report run failed.";
-
-      setError(message);
-      setStatus("error");
+      setError(err instanceof Error ? err.message : "Failed to reset counter");
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const reportPanel = (
-    <section className="panel">
-      <div className="panel-head">
-        <div>
-          <h3 className="panel-title">Daily Abuse Report</h3>
-
-          <p>Investigate the highest-risk API key detected today.</p>
-        </div>
-
-        <Badge tone="warning">Ops</Badge>
-      </div>
-
-      {status === "error" && error ? (
-        <div className="notice notice-error">{error}</div>
-      ) : null}
-
-      {report ? (
-        <div className="detail-grid">
-          <div className="detail-card">
-            <div className="detail-label">Top API Key</div>
-
-            <div className="detail-value detail-key">{report.topApiKey}</div>
-          </div>
-
-          <div className="detail-card">
-            <div className="detail-label">Total Requests</div>
-
-            <div className="detail-value">{report.totalRequests}</div>
-          </div>
-
-          <div className="detail-card">
-            <div className="detail-label">Blocked Requests</div>
-
-            <div className="detail-value">{report.blockedRequests}</div>
-          </div>
-
-          <div className="detail-card">
-            <div className="detail-label">Abuse Score</div>
-
-            <div className="detail-value">{report.abuseScore}</div>
-          </div>
-
-          <div className="detail-card span-12">
-            <div className="detail-label">Recommendation</div>
-
-            <div className="detail-value">
-              <Badge tone={getRecommendationTone(report.recommendation)}>
-                {report.recommendation}
-              </Badge>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="notice">
-          Run the report to surface the most abusive API key today.
-        </div>
-      )}
-    </section>
-  );
+  }
 
   return (
-    <section id="operations" className="section section-anchor">
-      <div className="section-head">
-        <div>
-          <h2>Operations</h2>
+    <div className="space-y-6">
+      <header className="space-y-2">
+        <h2 className="text-2xl font-bold tracking-tight">Operations</h2>
+        <p className="text-muted-foreground">
+          Manage rate limiters across your edge.
+        </p>
+      </header>
 
-          <p>
-            Run abuse analysis, security intelligence, and emergency recovery
-            actions.
+      <form onSubmit={handleSubmit} className="glass-card p-6 space-y-5">
+        <div className="space-y-1">
+          <h3 className="font-semibold">Reset Counter</h3>
+          <p className="text-sm text-muted-foreground">
+            Immediately clear the rate limit counter for a tenant + route
+            combination.
           </p>
         </div>
-
-        <div className="section-actions">
-          {lastRun ? (
-            <span className="timestamp">Last run {lastRun}</span>
-          ) : null}
-
-          <Button onClick={handleRunReport} loading={status === "loading"}>
-            Run Abuse Report
-          </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Tenant ID">
+            <input
+              required
+              disabled={loading}
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              className="form-input font-mono"
+            />
+          </Field>
+          <Field label="Route">
+            <input
+              required
+              disabled={loading}
+              value={route}
+              onChange={(e) => setRoute(e.target.value)}
+              placeholder="login-api"
+              className="form-input font-mono"
+            />
+          </Field>
         </div>
-      </div>
 
-      {resetCounter ? (
-        <div className="panel-grid">
-          {reportPanel}
+        {error && <ErrorAlert message={error} />}
+        {success && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-success/40 bg-success/10 px-3.5 py-3 text-sm text-success">
+            <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>{success}</span>
+          </div>
+        )}
 
-          <ResetCounterPanel
-            tenantId={resetCounter.tenantId}
-            onTenantIdChange={resetCounter.onTenantIdChange}
-            apiKey={resetCounter.apiKey}
-            onActivity={onActivity}
-          />
-        </div>
-      ) : (
-        reportPanel
-      )}
-    </section>
+        <button type="submit" disabled={loading} className="btn-danger">
+          {loading ? <Spinner /> : <Trash2 className="h-4 w-4" />}
+          {loading ? "Resetting..." : "Reset Counter"}
+        </button>
+      </form>
+    </div>
   );
 }

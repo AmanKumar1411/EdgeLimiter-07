@@ -11,8 +11,10 @@ import type {
   RegisterRequest,
   RegisterResponse,
   RunReportResponse,
+  SecurityReport,
   TopKey,
 } from "../types/api";
+import { clearSession, getSession, saveSession, type AuthSession } from "../auth/session";
 
 const DEFAULT_BASE_URL = "https://edge-limiter.edgeaman.workers.dev";
 
@@ -94,9 +96,19 @@ export async function loginUser(payload: LoginRequest) {
   });
 }
 
-export async function createPolicy(payload: ConfigRequest) {
+export async function createPolicy(
+  payload: ConfigRequest,
+  apiKey: string
+) {
+  const safeApiKey = String(apiKey)
+    .trim()
+    .replace(/[^\x00-\x7F]/g, "");
+
   return requestJson<ConfigResponse>("/config", {
     method: "POST",
+    headers: {
+      "x-api-key": safeApiKey,
+    },
     body: JSON.stringify(payload),
   });
 }
@@ -112,12 +124,27 @@ export type CheckResult = {
   };
 };
 
-export async function runCheck(payload: CheckRequest, apiKey: string) {
+export type Session = AuthSession;
+
+export const sessionStore = {
+  get: getSession,
+  set: saveSession,
+  clear: clearSession,
+};
+
+export async function runCheck(
+  payload: CheckRequest,
+  apiKey: string
+) {
+  const safeApiKey = String(apiKey)
+    .trim()
+    .replace(/[^\x00-\x7F]/g, "");
+
   const response = await fetch(buildUrl("/check"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
+      "x-api-key": safeApiKey,
     },
     body: JSON.stringify(payload),
   });
@@ -125,15 +152,30 @@ export async function runCheck(payload: CheckRequest, apiKey: string) {
   const data = (await response.json()) as CheckResponse;
 
   if (!response.ok && response.status !== 429) {
-    const message = (data as unknown as { error?: string })?.error ?? "Check request failed";
-    throw new ApiError(message, response.status, data);
+    const message =
+      (data as unknown as { error?: string })?.error ??
+      "Check request failed";
+
+    throw new ApiError(
+      message,
+      response.status,
+      data
+    );
   }
 
   const rateLimit = {
-    limit: readNumber(response.headers.get("X-RateLimit-Limit")),
-    remaining: readNumber(response.headers.get("X-RateLimit-Remaining")),
-    reset: readNumber(response.headers.get("X-RateLimit-Reset")),
-    retryAfter: readNumber(response.headers.get("Retry-After")),
+    limit: readNumber(
+      response.headers.get("X-RateLimit-Limit")
+    ),
+    remaining: readNumber(
+      response.headers.get("X-RateLimit-Remaining")
+    ),
+    reset: readNumber(
+      response.headers.get("X-RateLimit-Reset")
+    ),
+    retryAfter: readNumber(
+      response.headers.get("Retry-After")
+    ),
   };
 
   return {
@@ -141,6 +183,10 @@ export async function runCheck(payload: CheckRequest, apiKey: string) {
     data,
     rateLimit,
   } satisfies CheckResult;
+}
+
+export async function checkRate(tenantId: string, route: string, apiKey: string) {
+  return runCheck({ tenantId, route }, apiKey);
 }
 
 export async function fetchMetrics() {
@@ -172,6 +218,16 @@ export async function runReport() {
 
 export async function runClientReport(apiKey: string) {
   return requestJson<RunReportResponse>("/client/report", {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+    },
+  });
+}
+
+export async function getSecurityReport(tenantId: string, apiKey: string) {
+  const query = new URLSearchParams({ tenantId });
+  return requestJson<SecurityReport>(`/security-report?${query.toString()}`, {
     method: "GET",
     headers: {
       "x-api-key": apiKey,

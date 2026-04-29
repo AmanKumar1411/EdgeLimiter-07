@@ -85,3 +85,29 @@ export type RunReportResponse = {
   abuseScore: string;
   recommendation: string;
 };
+
+export type SecurityLog = {
+  id: number;
+  route: string;
+  ipAddress: string;
+  country: string;
+  allowed: boolean;
+  reason: string | null;
+  createdAt: string;
+};
+
+export type TopAbusiveIp = {
+  ipAddress: string;
+  country: string;
+  totalRequests: number;
+  blockedRequests: number;
+  tenantCount: number;
+};
+
+export type SecurityReport = {
+  recentLogs: SecurityLog[];
+  topAbusiveIps: TopAbusiveIp[];
+  aiSummary: string;
+  abuseScore: number;
+  recommendation: string;
+};

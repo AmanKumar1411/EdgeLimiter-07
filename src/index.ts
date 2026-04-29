@@ -194,8 +194,8 @@ VALUES(?, ?, ?)
   const userId = userInsert.meta.last_row_id;
 
   const apiKey =
-    "sk_live_" +
-    crypto.randomUUID().replace(/-/g, "");
+  "edge_limit_" +
+  crypto.randomUUID().replace(/-/g, "");
 
   await c.env.DB.prepare(`
     INSERT INTO api_keys(

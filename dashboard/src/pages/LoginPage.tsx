@@ -1,120 +1,124 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Shield } from "lucide-react";
 
-import { Badge } from "../components/Badge";
-import { Button } from "../components/Button";
-import { Field } from "../components/Field";
-import { saveSession } from "../auth/session";
+import { sessionStore } from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Spinner } from "@/components/Loading";
 
-export function LoginPage() {
+import { Field, ErrorAlert } from "./RegisterPage";
+
+export default function Login() {
   const navigate = useNavigate();
 
   const [tenantId, setTenantId] = useState("");
   const [apiKey, setApiKey] = useState("");
+
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
     setError(null);
+    setLoading(true);
 
-    if (!tenantId.trim() || !apiKey.trim()) {
-      setError("Please provide both your Tenant ID and API Key.");
+    const tid = tenantId.trim();
+    const key = apiKey.trim();
+
+    if (!tid || !key) {
+      setError("Enter both Tenant ID and API Key.");
+      setLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    sessionStore.set({
+      email: tid,
+      tenantId: tid,
+      apiKey: key,
+      role: "client",
+    });
 
-    // Simulating a brief network request for a professional feel
-    setTimeout(() => {
-      saveSession({
-        email: "client@tenant.com",
-        role: "client",
-        tenantId,
-        apiKey,
-      });
-
-      setIsLoading(false);
-      navigate("/dashboard");
-    }, 600);
-  };
+    navigate("/dashboard", { replace: true });
+    setLoading(false);
+  }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans selection:bg-blue-500/30">
-      {/* Header Section */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
-        <Badge tone="warning" className="mb-4">
-          API Access
-        </Badge>
-        <h2 className="text-center text-3xl font-semibold tracking-tight text-white">
-          EdgeLimiter
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-400 max-w-[280px]">
-          Enter your credentials to access your protection dashboard.
-        </p>
-      </div>
+    <main className="min-h-screen flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md glass-card p-8 md:p-10 animate-fade-in-up relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-glow pointer-events-none" />
 
-      {/* Form Card Section */}
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-[420px]">
-        <div className="bg-[#111111] py-8 px-6 shadow-2xl border border-white/10 sm:rounded-2xl sm:px-10 relative overflow-hidden">
-          {/* Subtle top highlight for depth */}
-          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+        <div className="relative space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-gradient-primary flex items-center justify-center">
+              <Shield className="h-5 w-5 text-primary-foreground" />
+            </div>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
+            <StatusBadge tone="primary">Client Access</StatusBadge>
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-3xl font-bold tracking-tight">EdgeLimiter</h2>
+
+            <p className="text-muted-foreground">
+              Enter your credentials to access your protection dashboard.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <Field label="Tenant ID">
               <input
-                id="tenantId"
                 type="text"
-                autoComplete="username"
-                className="block w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors sm:text-sm"
+                required
+                disabled={loading}
                 value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-                placeholder="your-tenant-id"
-                disabled={isLoading}
+                onChange={(e) => {
+                  setTenantId(e.target.value);
+                  setError(null);
+                }}
+                placeholder="company-a"
+                className="form-input font-mono"
+                autoComplete="username"
               />
             </Field>
 
             <Field label="API Key">
               <input
-                id="apiKey"
                 type="password"
-                autoComplete="current-password"
-                className="block w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors sm:text-sm font-mono"
+                required
+                disabled={loading}
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk_live_••••••••"
-                disabled={isLoading}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setError(null);
+                }}
+                placeholder="edge_live_••••••••"
+                className="form-input font-mono"
+                autoComplete="current-password"
               />
             </Field>
 
-            {error && (
-              <div className="rounded-md bg-red-500/10 border border-red-500/20 p-3">
-                <p className="text-sm text-red-400 text-center">{error}</p>
-              </div>
-            )}
+            {error && <ErrorAlert message={error} />}
 
-            <Button
+            <button
               type="submit"
-              className="w-full flex justify-center py-2.5"
-              disabled={isLoading}
+              disabled={loading || !tenantId || !apiKey}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-6 py-3 font-semibold hover:brightness-110 hover:shadow-glow-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
-              {isLoading ? "Authenticating..." : "Access Dashboard"}
-            </Button>
+              {loading && <Spinner />}
+
+              {loading ? "Verifying..." : "Access Dashboard"}
+            </button>
+
+            <p className="text-sm text-muted-foreground text-center">
+              No account?{" "}
+              <Link to="/register" className="text-primary hover:underline">
+                Register here
+              </Link>
+            </p>
           </form>
         </div>
-
-        {/* Footer Link */}
-        <p className="mt-8 text-center text-sm text-gray-400">
-          Don't have an account?{" "}
-          <button
-            onClick={() => navigate("/register")}
-            className="font-medium text-white hover:text-blue-400 transition-colors focus:outline-none focus:underline"
-          >
-            Create one
-          </button>
-        </p>
       </div>
-    </div>
+    </main>
   );
 }

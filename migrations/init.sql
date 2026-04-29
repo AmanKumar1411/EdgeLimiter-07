@@ -45,3 +45,16 @@ ON security_logs (tenant_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_security_logs_ip_created
 ON security_logs (ip_address, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id TEXT NOT NULL,
+  api_key TEXT,
+  route TEXT,
+  actor TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

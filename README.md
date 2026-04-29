@@ -31,7 +31,7 @@ Request body:
 
 ```json
 {
-  "tenantId": "company-a",
+  "tenantId": "your-tenant-id",
   "route": "login-api",
   "limit": 100,
   "window": 60,
@@ -47,7 +47,7 @@ Check if a request is allowed. Requires x-api-key.
 curl -i -X POST https://edge-limiter.edgeaman.workers.dev/check \
   -H "Content-Type: application/json" \
   -H "x-api-key: <your-api-key>" \
-  -d '{"tenantId":"company-a","route":"login-api"}'
+  -d '{"tenantId":"your-tenant-id","route":"login-api"}'
 ```
 
 Response headers:

@@ -95,7 +95,7 @@ export function CreatePolicyPanel({
             className="input"
             value={tenantId}
             onChange={(event) => onTenantIdChange(event.target.value)}
-            placeholder="company-a"
+            placeholder="your-tenant-id"
           />
         </Field>
         <Field label="Route" className="span-3">

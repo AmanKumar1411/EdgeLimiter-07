@@ -38,37 +38,47 @@ export async function generateAttackIntelligence(
       messages: [
         {
           role: "system",
-          content:
-            "You are a security analyst for an edge rate limiter. Return strict JSON only with keys summary, abuseScore, and recommendation. abuseScore must be one of Low, Medium, High, Critical.",
+          content: `
+You are a cybersecurity analyst.
+
+Return STRICT JSON with:
+- summary (must mention IP, country, route, and behavior)
+- abuseScore (Low, Medium, High, Critical)
+- recommendation
+
+Focus on:
+- Which IP is attacking
+- From which country
+- Which route is targeted
+- How many blocked requests
+- Pattern (burst / repeated / cross-tenant)
+
+Do NOT be generic. Be specific.
+          `,
         },
         {
           role: "user",
           content: JSON.stringify({
-            task:
-              "Analyze repeated blocked requests, burst attacks from the same IP, same IP across multiple tenants, and unusual country access.",
             tenantId,
-            recentLogs: recentLogs.slice(0, 40).map((log) => ({
+            instruction:
+              "Identify the most abusive IP, explain its behavior, and summarize attack pattern clearly.",
+            topAbusiveIp: topAbusiveIps[0] || null,
+            recentLogs: recentLogs.slice(0, 30).map((log) => ({
               route: log.route,
-              ipAddress: log.ip_address,
+              ip: log.ip_address,
               country: log.country,
-              colo: log.colo,
-              userAgent: log.user_agent,
               allowed: Boolean(log.allowed),
-              remaining: log.remaining,
-              retryAfter: log.retry_after,
               reason: log.reason,
-              createdAt: log.created_at,
+              timestamp: log.created_at,
             })),
-            topAbusiveIps,
-            fallbackAssessment: fallback,
           }),
         },
       ],
       response_format: {
         type: "json_object",
       },
-      max_tokens: 320,
-      temperature: 0.2,
+      max_tokens: 400,
+      temperature: 0.1,
     });
 
     const aiText = getAiText(result);
@@ -83,7 +93,7 @@ export async function generateAttackIntelligence(
         parsed.recommendation || fallback.recommendation,
     };
   } catch (error) {
-    console.error("Workers AI security analysis failed", error);
+    console.error("Workers AI failed", error);
     return fallback;
   }
 }
@@ -134,7 +144,7 @@ function buildHeuristicIntelligence(
   }
 
   const summaryParts = [
-    `${blockedRequests} blocked requests observed across ${totalRequests} recent checks.`,
+    `Detected ${blockedRequests} blocked requests. Primary attacker: ${topAbusiveIps[0]?.ip_address || "unknown"} targeting ${recentLogs[0]?.route || "unknown route"} from ${topAbusiveIps[0]?.country || "unknown location"}.`,
   ];
 
   if (topAbusiveIps[0]) {

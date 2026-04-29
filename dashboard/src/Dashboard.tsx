@@ -3,19 +3,17 @@ import { useMemo, useState } from "react";
 import { Badge } from "./components/Badge";
 import { HeroTester } from "./sections/HeroTester";
 import { CreatePolicyPanel } from "./sections/CreatePolicyPanel";
-import { AnalyticsSection } from "./sections/AnalyticsSection";
-import { OperationsSection } from "./sections/OperationsSection";
 import { AuditSection } from "./sections/AuditSection";
 import SecurityIntelligencePanel from "./components/SecurityIntelligencePanel";
+
 import type { AuditItem } from "./sections/AuditSection";
 import { clearSession, getSession } from "./auth/session";
 
 const NAV_ITEMS = [
-  { id: "live-control", label: "Live Control" },
+  { id: "overview", label: "Overview" },
   { id: "policies", label: "Policies" },
-  { id: "analytics", label: "Analytics" },
-  { id: "operations", label: "Operations" },
-  { id: "audit", label: "Audit" },
+  { id: "security", label: "Security" },
+  { id: "audit", label: "Audit Logs" },
 ];
 
 type ActivityInput = Omit<AuditItem, "id" | "time">;
@@ -23,7 +21,7 @@ type ActivityInput = Omit<AuditItem, "id" | "time">;
 export default function Dashboard() {
   const session = getSession();
 
-  const [tenantId, setTenantId] = useState(session?.tenantId || "company-a");
+  const [tenantId, setTenantId] = useState(session?.tenantId || "");
 
   const [apiKey, setApiKey] = useState(session?.apiKey || "");
 
@@ -62,9 +60,11 @@ export default function Dashboard() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">EL</div>
+
           <div>
             <div className="brand-title">EdgeLimiter</div>
-            <div className="brand-subtitle">Client Portal</div>
+
+            <div className="brand-subtitle">Tenant Security Center</div>
           </div>
         </div>
 
@@ -85,7 +85,8 @@ export default function Dashboard() {
         <div className="sidebar-foot">
           <div className="status-card">
             <span>Edge Status</span>
-            <Badge tone="success">Live</Badge>
+
+            <Badge tone="success">Protected</Badge>
           </div>
         </div>
       </aside>
@@ -94,6 +95,7 @@ export default function Dashboard() {
         <header className="topbar">
           <div>
             <div className="topbar-title">{activeLabel}</div>
+
             <div className="topbar-sub">Tenant: {tenantId}</div>
           </div>
 
@@ -106,6 +108,7 @@ export default function Dashboard() {
         </header>
 
         <main className="content">
+          {/* Live Protection Tester */}
           <HeroTester
             tenantId={tenantId}
             onTenantIdChange={setTenantId}
@@ -114,6 +117,7 @@ export default function Dashboard() {
             onActivity={handleActivity}
           />
 
+          {/* Tenant Policies */}
           <section id="policies" className="section">
             <CreatePolicyPanel
               tenantId={tenantId}
@@ -122,9 +126,10 @@ export default function Dashboard() {
             />
           </section>
 
-          <AnalyticsSection />
+          {/* Tenant Security Intelligence */}
           <SecurityIntelligencePanel />
-          <OperationsSection onActivity={handleActivity} />
+
+          {/* Tenant Audit Logs */}
           <AuditSection activity={activity} />
         </main>
       </div>

@@ -77,7 +77,6 @@ export function HeroTester({
   }, [result]);
 
   const prefillDemo = () => {
-    onTenantIdChange("company-a");
     setRoute(DEFAULT_ROUTE);
   };
 
@@ -115,12 +114,7 @@ export function HeroTester({
           hint="Shared across all panels."
           className="span-3"
         >
-          <input
-            className="input"
-            value={tenantId}
-            onChange={(event) => onTenantIdChange(event.target.value)}
-            placeholder="company-a"
-          />
+          <input className="input" value={tenantId} disabled />
         </Field>
         <Field label="Route" className="span-3">
           <input

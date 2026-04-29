@@ -28,13 +28,17 @@ const getRecommendationTone = (
   if (!recommendation) {
     return "neutral";
   }
+
   const value = recommendation.toLowerCase();
+
   if (value.includes("block")) {
     return "danger";
   }
+
   if (value.includes("monitor")) {
     return "warning";
   }
+
   return "info";
 };
 
@@ -43,8 +47,11 @@ export function OperationsSection({
   resetCounter,
 }: OperationsSectionProps) {
   const [report, setReport] = useState<RunReportResponse | null>(null);
+
   const [status, setStatus] = useState<LoadState>("idle");
+
   const [error, setError] = useState<string | null>(null);
+
   const [lastRun, setLastRun] = useState<string | null>(null);
 
   const handleRunReport = async () => {
@@ -53,9 +60,11 @@ export function OperationsSection({
 
     try {
       const data = await runReport();
+
       setReport(data);
       setLastRun(new Date().toLocaleTimeString());
       setStatus("success");
+
       onActivity?.({
         title: "Abuse report generated",
         detail: data.topApiKey,
@@ -63,6 +72,7 @@ export function OperationsSection({
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Report run failed.";
+
       setError(message);
       setStatus("error");
     }
@@ -73,8 +83,10 @@ export function OperationsSection({
       <div className="panel-head">
         <div>
           <h3 className="panel-title">Daily Abuse Report</h3>
+
           <p>Investigate the highest-risk API key detected today.</p>
         </div>
+
         <Badge tone="warning">Ops</Badge>
       </div>
 
@@ -86,22 +98,31 @@ export function OperationsSection({
         <div className="detail-grid">
           <div className="detail-card">
             <div className="detail-label">Top API Key</div>
+
             <div className="detail-value detail-key">{report.topApiKey}</div>
           </div>
+
           <div className="detail-card">
             <div className="detail-label">Total Requests</div>
+
             <div className="detail-value">{report.totalRequests}</div>
           </div>
+
           <div className="detail-card">
             <div className="detail-label">Blocked Requests</div>
+
             <div className="detail-value">{report.blockedRequests}</div>
           </div>
+
           <div className="detail-card">
             <div className="detail-label">Abuse Score</div>
+
             <div className="detail-value">{report.abuseScore}</div>
           </div>
+
           <div className="detail-card span-12">
             <div className="detail-label">Recommendation</div>
+
             <div className="detail-value">
               <Badge tone={getRecommendationTone(report.recommendation)}>
                 {report.recommendation}
@@ -122,14 +143,20 @@ export function OperationsSection({
       <div className="section-head">
         <div>
           <h2>Operations</h2>
-          <p>Run abuse analysis and operational checks.</p>
+
+          <p>
+            Run abuse analysis, security intelligence, and emergency recovery
+            actions.
+          </p>
         </div>
+
         <div className="section-actions">
           {lastRun ? (
             <span className="timestamp">Last run {lastRun}</span>
           ) : null}
+
           <Button onClick={handleRunReport} loading={status === "loading"}>
-            Run abuse report
+            Run Abuse Report
           </Button>
         </div>
       </div>
@@ -137,6 +164,7 @@ export function OperationsSection({
       {resetCounter ? (
         <div className="panel-grid">
           {reportPanel}
+
           <ResetCounterPanel
             tenantId={resetCounter.tenantId}
             onTenantIdChange={resetCounter.onTenantIdChange}

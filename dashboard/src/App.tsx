@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import { clearSession, getSession } from "./auth/session";
+import { getSession, clearSession } from "./auth/session";
 
 import { LandingPage } from "./pages/LandingPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -24,7 +24,7 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/login" element={<LoginPage />} />
 
-      {/* Protected Client Dashboard */}
+      {/* Client Only */}
       <Route
         path="/dashboard"
         element={
@@ -40,7 +40,7 @@ export default function App() {
         }
       />
 
-      {/* Protected Admin */}
+      {/* Admin Only */}
       <Route
         path="/admin"
         element={
@@ -48,7 +48,6 @@ export default function App() {
             session.role === "super_admin" ? (
               <AdminDashboard
                 adminEmail={session.email}
-                adminApiKey={session.apiKey}
                 onLogout={handleLogout}
               />
             ) : (
@@ -60,7 +59,6 @@ export default function App() {
         }
       />
 
-      {/* fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

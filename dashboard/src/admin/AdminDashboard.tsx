@@ -34,7 +34,7 @@ export function AdminDashboard({
 }: AdminDashboardProps) {
   const [tenantId, setTenantId] = useLocalStorage(
     "edge-limiter-tenant",
-    "company-a",
+    "your-tenant-id",
   );
 
   const [apiKey, setApiKey] = useLocalStorage(

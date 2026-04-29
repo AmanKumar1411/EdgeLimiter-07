@@ -93,7 +93,7 @@ export function ResetCounterPanel({
             className="input"
             value={tenantId}
             onChange={(event) => onTenantIdChange(event.target.value)}
-            placeholder="company-a"
+            placeholder="your-tenant-id"
           />
         </Field>
 

@@ -4,6 +4,7 @@ import { RateLimiter } from "./durable-objects/RateLimiter";
 import metrics from "./api/metrics";
 import topKeys from "./api/topKeys";
 import { pushToQueue } from "./queue/producer";
+import { createAuditLog } from "./utils/audit";
 import {
   ensureSecurityLogsTable,
   queue as consumeQueue,
@@ -226,25 +227,52 @@ CONFIG ROUTE
 app.post("/config", async (c) => {
   const body = await c.req.json();
 
-  const tenantId = body.tenantId;
-  const route = body.route;
-  const limit = body.limit;
-  const window = body.window;
+  const tenantId =
+    typeof body.tenantId === "string"
+      ? body.tenantId.trim()
+      : "";
+
+  const route =
+    typeof body.route === "string"
+      ? body.route.trim()
+      : "";
+
+  const limit = Number(body.limit);
+  const window = Number(body.window);
+
   const algorithm =
     body.algorithm || "sliding_window";
 
   const apiKey = c.req.header("x-api-key");
-  if (apiKey) {
-    const owner = await getUserByApiKey(c.env, apiKey);
-    if (!owner || owner.status !== "active") {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
 
-    if (owner.role === "client" && owner.tenant_id !== tenantId) {
-      return c.json({ error: "Forbidden for this tenant" }, 403);
-    }
+  /*
+   API key is mandatory for config creation
+  */
+  if (!apiKey) {
+    return c.json(
+      { error: "API key missing" },
+      401
+    );
   }
 
+  /*
+   Validate API key ownership
+  */
+  const owner = await getUserByApiKey(
+    c.env,
+    apiKey
+  );
+
+  if (!owner || owner.status !== "active") {
+    return c.json(
+      { error: "Unauthorized" },
+      401
+    );
+  }
+
+  /*
+   Required field validation
+  */
   if (
     !tenantId ||
     !route ||
@@ -260,8 +288,29 @@ app.post("/config", async (c) => {
     );
   }
 
+  /*
+   Prevent client cross-tenant access
+   Client → only own tenant
+   Super Admin → all tenants allowed
+  */
+  if (
+    owner.role !== "super_admin" &&
+    owner.tenant_id !== tenantId
+  ) {
+    return c.json(
+      {
+        error:
+          "Forbidden for this tenant",
+      },
+      403
+    );
+  }
+
   const configKey = `${tenantId}:${route}`;
 
+  /*
+   Save config to KV
+  */
   await c.env.CONFIG_KV.put(
     configKey,
     JSON.stringify({
@@ -270,6 +319,25 @@ app.post("/config", async (c) => {
       limit,
       window,
       algorithm,
+    })
+  );
+
+  /*
+   NEW:
+   Create persistent audit log
+  */
+  c.executionCtx.waitUntil(
+    createAuditLog(c.env, {
+      tenantId,
+      apiKey,
+      route,
+      actor:
+        owner.role === "super_admin"
+          ? "admin"
+          : "client",
+      actionType: "policy_created",
+      message: `Rate limit policy created for route ${route} with limit ${limit}/${window}s`,
+      severity: "Medium",
     })
   );
 
@@ -285,7 +353,6 @@ app.post("/config", async (c) => {
     },
   });
 });
-
 // Put this helper ABOVE app.post("/check")
 
 async function queueCheckSecurityLog(
@@ -387,10 +454,20 @@ app.post("/check", async (c) => {
     );
   }
 
+  /*
+   Validate:
+   1. API key exists
+   2. API key belongs to correct tenant
+  */
   const existingKey = await c.env.DB.prepare(`
-    SELECT * FROM api_keys
-    WHERE api_key = ?
-    AND status = 'active'
+    SELECT
+      ak.*,
+      u.tenant_id
+    FROM api_keys ak
+    JOIN users u
+      ON ak.user_id = u.id
+    WHERE ak.api_key = ?
+      AND ak.status = 'active'
   `)
     .bind(apiKey)
     .first();
@@ -411,6 +488,28 @@ app.post("/check", async (c) => {
     return c.json(
       { error: "Unauthorized" },
       401
+    );
+  }
+
+  /*
+   Prevent cross-tenant abuse
+  */
+  if (existingKey.tenant_id !== tenantId) {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId,
+        apiKey,
+        route,
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "tenant_mismatch",
+      })
+    );
+
+    return c.json(
+      { error: "Tenant mismatch" },
+      403
     );
   }
 
@@ -485,6 +584,9 @@ app.post("/check", async (c) => {
   const result =
     (await response.json()) as RateLimitResult;
 
+  /*
+   Existing security queue log
+  */
   c.executionCtx.waitUntil(
     queueCheckSecurityLog(c.env, metadata, {
       tenantId,
@@ -499,6 +601,27 @@ app.post("/check", async (c) => {
     })
   );
 
+  /*
+   NEW:
+   Persistent audit timeline entry
+  */
+  if (!result.allowed) {
+    c.executionCtx.waitUntil(
+      createAuditLog(c.env, {
+        tenantId,
+        apiKey,
+        route,
+        actor: "system",
+        actionType: "rate_limit_block",
+        message: `Blocked repeated abuse from IP ${metadata.ipAddress} on route ${route}`,
+        severity: "High",
+      })
+    );
+  }
+
+  /*
+   Analytics Engine
+  */
   c.executionCtx.waitUntil(
     Promise.resolve(
       c.env.ANALYTICS.writeDataPoint({
@@ -765,13 +888,30 @@ app.get("/security-report", async (c) => {
 
 app.post("/reset", async (c) => {
   const apiKey = c.req.header("x-api-key");
+
+  /*
+   API key required
+  */
   if (!apiKey) {
-    return c.json({ error: "API key missing" }, 401);
+    return c.json(
+      { error: "API key missing" },
+      401
+    );
   }
 
-  const owner = await getUserByApiKey(c.env, apiKey);
+  /*
+   Validate API key ownership
+  */
+  const owner = await getUserByApiKey(
+    c.env,
+    apiKey
+  );
+
   if (!owner || owner.status !== "active") {
-    return c.json({ error: "Unauthorized" }, 401);
+    return c.json(
+      { error: "Unauthorized" },
+      401
+    );
   }
 
   const body = (await c.req.json()) as {
@@ -779,40 +919,114 @@ app.post("/reset", async (c) => {
     route?: string;
   };
 
-  const tenantId = body.tenantId?.trim();
-  const route = body.route?.trim();
+  const tenantId =
+    typeof body.tenantId === "string"
+      ? body.tenantId.trim()
+      : "";
 
+  const route =
+    typeof body.route === "string"
+      ? body.route.trim()
+      : "";
+
+  /*
+   Required fields validation
+  */
   if (!tenantId || !route) {
-    return c.json({ error: "tenantId and route are required" }, 400);
+    return c.json(
+      {
+        error:
+          "tenantId and route are required",
+      },
+      400
+    );
   }
 
-  if (owner.role === "client" && owner.tenant_id !== tenantId) {
-    return c.json({ error: "Forbidden for this tenant" }, 403);
+  /*
+   Prevent client cross-tenant reset
+   Client → only own tenant
+   Super Admin → all tenants allowed
+  */
+  if (
+    owner.role !== "super_admin" &&
+    owner.tenant_id !== tenantId
+  ) {
+    return c.json(
+      {
+        error:
+          "Forbidden for this tenant",
+      },
+      403
+    );
   }
 
   const configKey = `${tenantId}:${route}`;
-  const id = c.env.RATE_LIMITER.idFromName(configKey);
-  const stub = c.env.RATE_LIMITER.get(id);
-  const response = await stub.fetch("http://do/reset", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      type: "reset",
-      tenantId,
-      route,
-    }),
-  });
+
+  const id =
+    c.env.RATE_LIMITER.idFromName(configKey);
+
+  const stub =
+    c.env.RATE_LIMITER.get(id);
+
+  /*
+   Durable Object reset call
+  */
+  const response = await stub.fetch(
+    "http://do/reset",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify({
+        type: "reset",
+        tenantId,
+        route,
+      }),
+    }
+  );
 
   if (!response.ok) {
-    return c.json({ error: "Failed to reset counters" }, 500);
+    return c.json(
+      {
+        error:
+          "Failed to reset counters",
+      },
+      500
+    );
   }
 
-  const result = (await response.json()) as ResetResult;
+  const result =
+    (await response.json()) as ResetResult;
 
-  return c.json(result);
+  /*
+   NEW:
+   Persistent audit log
+  */
+  c.executionCtx.waitUntil(
+    createAuditLog(c.env, {
+      tenantId,
+      apiKey,
+      route,
+      actor:
+        owner.role === "super_admin"
+          ? "admin"
+          : "client",
+      actionType: "rate_limit_reset",
+      message: `Rate limiter manually reset for route ${route}`,
+      severity: "High",
+    })
+  );
+
+  return c.json({
+    success: true,
+    tenantId,
+    route,
+    ...result,
+  });
 });
+
 app.get("/run-report", async (c) => {
   const result = await c.env.DB.prepare(`
     SELECT
@@ -857,6 +1071,88 @@ app.get("/run-report", async (c) => {
     blockedRequests,
     abuseScore: `${abuseScore}%`,
     recommendation,
+  });
+});
+
+app.get("/audit-report", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  const tenantId =
+    c.req.query("tenantId")?.trim() || "";
+
+  if (!apiKey) {
+    return c.json(
+      { error: "API key missing" },
+      401
+    );
+  }
+
+  if (!tenantId) {
+    return c.json(
+      { error: "tenantId is required" },
+      400
+    );
+  }
+
+  /*
+   Validate API key + tenant ownership
+  */
+  const existingKey = await c.env.DB.prepare(`
+    SELECT
+      ak.*,
+      u.tenant_id,
+      u.role
+    FROM api_keys ak
+    JOIN users u
+      ON ak.user_id = u.id
+    WHERE ak.api_key = ?
+      AND ak.status = 'active'
+  `)
+    .bind(apiKey)
+    .first();
+
+  if (!existingKey) {
+    return c.json(
+      { error: "Unauthorized" },
+      401
+    );
+  }
+
+  /*
+   Client can only access own tenant
+   Admin can access all
+  */
+  if (
+    existingKey.role !== "super_admin" &&
+    existingKey.tenant_id !== tenantId
+  ) {
+    return c.json(
+      { error: "Forbidden" },
+      403
+    );
+  }
+
+  const logs = await c.env.DB.prepare(`
+    SELECT
+      id,
+      tenant_id,
+      api_key,
+      route,
+      actor,
+      action_type,
+      message,
+      severity,
+      created_at
+    FROM audit_logs
+    WHERE tenant_id = ?
+    ORDER BY created_at DESC
+    LIMIT 50
+  `)
+    .bind(tenantId)
+    .all();
+
+  return c.json({
+    tenantId,
+    auditLogs: logs.results || [],
   });
 });
 

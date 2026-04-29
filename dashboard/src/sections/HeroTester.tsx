@@ -11,7 +11,6 @@ const DEFAULT_ROUTE = "login-api";
 
 type HeroTesterProps = {
   tenantId: string;
-  onTenantIdChange: (value: string) => void;
   apiKey: string;
   onApiKeyChange: (value: string) => void;
   onActivity?: (entry: {
@@ -23,7 +22,6 @@ type HeroTesterProps = {
 
 export function HeroTester({
   tenantId,
-  onTenantIdChange,
   apiKey,
   onApiKeyChange,
   onActivity,

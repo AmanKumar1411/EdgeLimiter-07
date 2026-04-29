@@ -6,7 +6,7 @@ import { CreatePolicyPanel } from "./sections/CreatePolicyPanel";
 import { AnalyticsSection } from "./sections/AnalyticsSection";
 import { OperationsSection } from "./sections/OperationsSection";
 import { AuditSection } from "./sections/AuditSection";
-
+import SecurityIntelligencePanel from "./components/SecurityIntelligencePanel";
 import type { AuditItem } from "./sections/AuditSection";
 import { clearSession, getSession } from "./auth/session";
 
@@ -123,6 +123,7 @@ export default function Dashboard() {
           </section>
 
           <AnalyticsSection />
+          <SecurityIntelligencePanel />
           <OperationsSection onActivity={handleActivity} />
           <AuditSection activity={activity} />
         </main>

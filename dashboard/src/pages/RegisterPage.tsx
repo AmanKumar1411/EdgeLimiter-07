@@ -12,7 +12,6 @@ export function RegisterPage() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [tenantId, setTenantId] = useState("");
 
   const [status, setStatus] = useState<
@@ -20,16 +19,16 @@ export function RegisterPage() {
   >("idle");
 
   const [error, setError] = useState<string | null>(null);
-
   const [apiKey, setApiKey] = useState("");
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
-
     setError(null);
 
-    if (!email || !password || !tenantId) {
-      setError("Email, password, and tenant ID are required.");
+    if (!email || !tenantId) {
+      setError("Email and Tenant ID are required.");
       setStatus("error");
       return;
     }
@@ -39,7 +38,6 @@ export function RegisterPage() {
     try {
       const result = await registerUser({
         email,
-        password,
         tenantId,
         role: "client",
       });
@@ -47,8 +45,11 @@ export function RegisterPage() {
       setApiKey(result.apiKey);
       setStatus("success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed.");
-
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Registration failed."
+      );
       setStatus("error");
     }
   };
@@ -57,78 +58,85 @@ export function RegisterPage() {
     <div className="auth-shell">
       <section className="auth-card">
         <div className="auth-header-row">
-          <Badge tone="info">Client Onboarding</Badge>
+          <Badge tone="info">
+            Client Onboarding
+          </Badge>
         </div>
 
         <h2>Create Your Company Account</h2>
 
         <p className="auth-description">
-          Onboard your tenant, generate your API key, and start protecting your
-          APIs in minutes.
+          Register your tenant and generate
+          your API key to start protecting APIs.
         </p>
 
-        <form className="form-rows" onSubmit={handleSubmit}>
+        <form
+          className="form-rows"
+          onSubmit={handleSubmit}
+        >
           <Field label="Work Email">
             <input
               className="input"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) =>
+                setEmail(event.target.value)
+              }
               placeholder="team@company.com"
             />
           </Field>
 
-          <Field label="Password">
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Create a password"
-            />
-          </Field>
-
-          <Field label="Tenant ID" hint="Used to namespace all your policies">
+          <Field
+            label="Tenant ID"
+            hint="Used for all API protection policies"
+          >
             <input
               className="input"
               value={tenantId}
-              onChange={(event) => setTenantId(event.target.value)}
+              onChange={(event) =>
+                setTenantId(event.target.value)
+              }
               placeholder="company-a"
             />
           </Field>
 
-          <Button type="submit" loading={status === "loading"}>
-            Create Account
+          <Button
+            type="submit"
+            loading={status === "loading"}
+          >
+            Generate API Key
           </Button>
         </form>
 
         {status === "error" && error ? (
-          <div className="notice notice-error">{error}</div>
+          <div className="notice notice-error">
+            {error}
+          </div>
         ) : null}
 
         {status === "success" ? (
           <div className="auth-success">
-            <Badge tone="success">Onboarding Complete</Badge>
+            <Badge tone="success">
+              Onboarding Complete
+            </Badge>
 
             <p>
-              Your company is now onboarded. Save your API key and continue to
-              login.
+              Save your API key securely.
+              You’ll use it to access your dashboard.
             </p>
 
-            <CopyField label="Generated API Key" value={apiKey} />
+            <CopyField
+              value={apiKey}
+              label="Generated API Key"
+            />
 
-            <Button onClick={() => navigate("/login")}>
-              Continue to Login
+            <Button
+              onClick={() => navigate("/login")}
+            >
+              Continue to Dashboard Access
             </Button>
           </div>
         ) : null}
-
-        <div className="auth-footer">
-          Already have an account?{" "}
-          <span className="auth-link" onClick={() => navigate("/login")}>
-            Login here
-          </span>
-        </div>
       </section>
     </div>
   );

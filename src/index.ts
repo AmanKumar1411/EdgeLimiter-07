@@ -39,14 +39,14 @@ type RequestSecurityMetadata = Pick<
   "ipAddress" | "country" | "colo" | "userAgent"
 >;
 
-type LoginUserRow = {
-  id: number;
-  email: string;
-  password: string;
-  role: string;
-  tenant_id: string;
-  api_key: string;
-};
+// type LoginUserRow = {
+//   id: number;
+//   email: string;
+//   password: string;
+//   role: string;
+//   tenant_id: string;
+//   api_key: string;
+// };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -54,17 +54,17 @@ function isValidRole(role: string | undefined) {
   return role === "client" || role === "super_admin";
 }
 
-function toHex(buffer: ArrayBuffer) {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+// function toHex(buffer: ArrayBuffer) {
+//   return Array.from(new Uint8Array(buffer))
+//     .map((b) => b.toString(16).padStart(2, "0"))
+//     .join("");
+// }
 
-async function hashPassword(password: string) {
-  const input = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", input);
-  return toHex(digest);
-}
+// async function hashPassword(password: string) {
+//   const input = new TextEncoder().encode(password);
+//   const digest = await crypto.subtle.digest("SHA-256", input);
+//   return toHex(digest);
+// }
 
 async function getUserByApiKey(env: Env, apiKey: string) {
   return env.DB.prepare(
@@ -116,33 +116,6 @@ function getRequestSecurityMetadata(
   };
 }
 
-async function queueCheckSecurityLog(
-  env: Env,
-  metadata: RequestSecurityMetadata,
-  entry: {
-    tenantId: string;
-    apiKey: string;
-    route: string;
-    allowed: boolean;
-    remaining: number;
-    retryAfter: number;
-    reason: string | null;
-  }
-) {
-  await pushToQueue(env, {
-    type: "security_log",
-    tenantId: entry.tenantId,
-    apiKey: entry.apiKey,
-    route: entry.route,
-    timestamp: new Date().toISOString(),
-    allowed: entry.allowed,
-    remaining: entry.remaining,
-    retryAfter: entry.retryAfter,
-    reason: entry.reason,
-    ...metadata,
-  });
-}
-
 app.use(
   "*",
   cors({
@@ -167,23 +140,22 @@ app.get("/health", (c) => {
   });
 });
 
+
 app.post("/register", async (c) => {
   const body = (await c.req.json()) as {
     email?: string;
-    password?: string;
     tenantId?: string;
     role?: string;
   };
 
   const email = body.email?.trim().toLowerCase();
-  const password = body.password?.trim();
   const tenantId = body.tenantId?.trim().toLowerCase();
   const role = body.role?.trim().toLowerCase() || "client";
 
-  if (!email || !password || !tenantId) {
+  if (!email || !tenantId) {
     return c.json(
       {
-        error: "email, password, and tenantId are required",
+        error: "email and tenantId are required",
       },
       400
     );
@@ -222,23 +194,39 @@ app.post("/register", async (c) => {
     );
   }
 
-  const passwordHash = await hashPassword(password);
-
   const userInsert = await c.env.DB.prepare(`
-    INSERT INTO users (email, password, role, tenant_id)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO users(
+  email,
+  role,
+  tenant_id
+)
+VALUES(?, ?, ?)
   `)
-    .bind(email, passwordHash, role, tenantId)
+    .bind(
+      email,
+      role,
+      tenantId
+    )
     .run();
 
   const userId = userInsert.meta.last_row_id;
-  const apiKey = "sk_live_" + crypto.randomUUID().replace(/-/g, "");
+
+  const apiKey =
+    "sk_live_" +
+    crypto.randomUUID().replace(/-/g, "");
 
   await c.env.DB.prepare(`
-    INSERT INTO api_keys (user_id, api_key, status)
-    VALUES (?, ?, 'active')
+    INSERT INTO api_keys(
+    user_id,
+    api_key,
+    status
+  )
+VALUES(?, ?, 'active')
   `)
-    .bind(userId, apiKey)
+    .bind(
+      userId,
+      apiKey
+    )
     .run();
 
   return c.json({
@@ -250,82 +238,84 @@ app.post("/register", async (c) => {
   });
 });
 
-app.post("/login", async (c) => {
-  const body = (await c.req.json()) as {
-    email?: string;
-    password?: string;
-  };
 
-  const email = body.email?.trim().toLowerCase();
-  const password = body.password?.trim();
 
-  if (!email || !password) {
-    return c.json(
-      {
-        error: "email and password are required",
-      },
-      400
-    );
-  }
+// app.post("/login", async (c) => {
+//   const body = (await c.req.json()) as {
+//     email?: string;
+//     password?: string;
+//   };
 
-  const user = await c.env.DB.prepare(
-    `
-      SELECT
-        u.id,
-        u.email,
-        u.password,
-        u.role,
-        u.tenant_id,
-        a.api_key
-      FROM users u
-      LEFT JOIN api_keys a
-        ON a.user_id = u.id
-        AND a.status = 'active'
-      WHERE u.email = ?
-      ORDER BY a.id DESC
-      LIMIT 1
-    `
-  )
-    .bind(email)
-    .first<LoginUserRow>();
+//   const email = body.email?.trim().toLowerCase();
+//   const password = body.password?.trim();
 
-  if (!user) {
-    return c.json(
-      {
-        error: "Invalid credentials",
-      },
-      401
-    );
-  }
+//   if (!email || !password) {
+//     return c.json(
+//       {
+//         error: "email and password are required",
+//       },
+//       400
+//     );
+//   }
 
-  const passwordHash = await hashPassword(password);
-  if (passwordHash !== user.password) {
-    return c.json(
-      {
-        error: "Invalid credentials",
-      },
-      401
-    );
-  }
+//   const user = await c.env.DB.prepare(
+//     `
+//       SELECT
+//         u.id,
+//         u.email,
+//         u.password,
+//         u.role,
+//         u.tenant_id,
+//         a.api_key
+//       FROM users u
+//       LEFT JOIN api_keys a
+//         ON a.user_id = u.id
+//         AND a.status = 'active'
+//       WHERE u.email = ?
+//       ORDER BY a.id DESC
+//       LIMIT 1
+//     `
+//   )
+//     .bind(email)
+//     .first<LoginUserRow>();
 
-  if (!user.api_key) {
-    const generatedApiKey = "sk_live_" + crypto.randomUUID().replace(/-/g, "");
-    await c.env.DB.prepare(
-      `INSERT INTO api_keys (user_id, api_key, status) VALUES (?, ?, 'active')`
-    )
-      .bind(user.id, generatedApiKey)
-      .run();
-    user.api_key = generatedApiKey;
-  }
+//   if (!user) {
+//     return c.json(
+//       {
+//         error: "Invalid credentials",
+//       },
+//       401
+//     );
+//   }
 
-  return c.json({
-    success: true,
-    role: user.role,
-    tenantId: user.tenant_id,
-    apiKey: user.api_key,
-    email: user.email,
-  });
-});
+//   const passwordHash = await hashPassword(password);
+//   if (passwordHash !== user.password) {
+//     return c.json(
+//       {
+//         error: "Invalid credentials",
+//       },
+//       401
+//     );
+//   }
+
+//   if (!user.api_key) {
+//     const generatedApiKey = "sk_live_" + crypto.randomUUID().replace(/-/g, "");
+//     await c.env.DB.prepare(
+//       `INSERT INTO api_keys (user_id, api_key, status) VALUES (?, ?, 'active')`
+//     )
+//       .bind(user.id, generatedApiKey)
+//       .run();
+//     user.api_key = generatedApiKey;
+//   }
+
+//   return c.json({
+//     success: true,
+//     role: user.role,
+//     tenantId: user.tenant_id,
+//     apiKey: user.api_key,
+//     email: user.email,
+//   });
+// });
 
 /*
 CONFIG ROUTE
@@ -398,10 +388,10 @@ app.post("/config", async (c) => {
 async function queueCheckSecurityLog(
   env: Env,
   metadata: {
-    ipAddress: string;
-    country: string;
-    colo: string;
-    userAgent: string;
+    ipAddress: string | null;
+    country: string | null;
+    colo: string | null;
+    userAgent: string | null;
   },
   payload: {
     tenantId: string;

@@ -38,16 +38,17 @@ export function LoginPage() {
       });
 
       saveSession({
-        email,
+        email: result.email,
         role: result.role,
         tenantId: result.tenantId,
         apiKey: result.apiKey,
       });
 
+      // Full reload ensures App.tsx reads fresh localStorage
       if (result.role === "super_admin") {
-        navigate("/admin");
+        window.location.href = "/admin";
       } else {
-        navigate("/dashboard");
+        window.location.href = "/dashboard";
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");

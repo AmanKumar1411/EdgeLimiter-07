@@ -14,7 +14,59 @@ type RateLimitResult = {
   algorithm: string;
 };
 
+type LoginUserRow = {
+  id: number;
+  email: string;
+  password: string;
+  role: string;
+  tenant_id: string;
+  api_key: string;
+};
+
 const app = new Hono<{ Bindings: Bindings }>();
+
+function isValidRole(role: string | undefined) {
+  return role === "client" || role === "super_admin";
+}
+
+function toHex(buffer: ArrayBuffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashPassword(password: string) {
+  const input = new TextEncoder().encode(password);
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  return toHex(digest);
+}
+
+async function getUserByApiKey(env: Env, apiKey: string) {
+  return env.DB.prepare(
+    `
+      SELECT
+        u.id,
+        u.email,
+        u.role,
+        u.tenant_id,
+        a.api_key,
+        a.status
+      FROM api_keys a
+      INNER JOIN users u ON u.id = a.user_id
+      WHERE a.api_key = ?
+      LIMIT 1
+    `
+  )
+    .bind(apiKey)
+    .first<{
+      id: number;
+      email: string;
+      role: string;
+      tenant_id: string;
+      api_key: string;
+      status: string;
+    }>();
+}
 
 app.use(
   "*",
@@ -41,31 +93,162 @@ app.get("/health", (c) => {
 });
 
 app.post("/register", async (c) => {
-  const body = await c.req.json();
-  const email = body.email;
+  const body = (await c.req.json()) as {
+    email?: string;
+    password?: string;
+    tenantId?: string;
+    role?: string;
+  };
 
-  if (!email) {
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password?.trim();
+  const tenantId = body.tenantId?.trim().toLowerCase();
+  const role = body.role?.trim().toLowerCase() || "client";
+
+  if (!email || !password || !tenantId) {
     return c.json(
-      { error: "Email is required" },
+      {
+        error: "email, password, and tenantId are required",
+      },
       400
     );
   }
 
-  const apiKey =
-    "sk_live_" + crypto.randomUUID().replace(/-/g, "");
+  if (role !== "client") {
+    return c.json(
+      {
+        error: "Public registration only supports role=client",
+      },
+      400
+    );
+  }
+
+  if (!isValidRole(role)) {
+    return c.json(
+      {
+        error: "Invalid role",
+      },
+      400
+    );
+  }
+
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM users WHERE email = ? LIMIT 1`
+  )
+    .bind(email)
+    .first();
+
+  if (existing) {
+    return c.json(
+      {
+        error: "Email already registered",
+      },
+      409
+    );
+  }
+
+  const passwordHash = await hashPassword(password);
+
+  const userInsert = await c.env.DB.prepare(`
+    INSERT INTO users (email, password, role, tenant_id)
+    VALUES (?, ?, ?, ?)
+  `)
+    .bind(email, passwordHash, role, tenantId)
+    .run();
+
+  const userId = userInsert.meta.last_row_id;
+  const apiKey = "sk_live_" + crypto.randomUUID().replace(/-/g, "");
 
   await c.env.DB.prepare(`
-    INSERT INTO api_keys
-    (email, api_key, status)
+    INSERT INTO api_keys (user_id, api_key, status)
     VALUES (?, ?, 'active')
   `)
-    .bind(email, apiKey)
+    .bind(userId, apiKey)
     .run();
 
   return c.json({
     success: true,
     email,
+    tenantId,
+    role,
     apiKey,
+  });
+});
+
+app.post("/login", async (c) => {
+  const body = (await c.req.json()) as {
+    email?: string;
+    password?: string;
+  };
+
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password?.trim();
+
+  if (!email || !password) {
+    return c.json(
+      {
+        error: "email and password are required",
+      },
+      400
+    );
+  }
+
+  const user = await c.env.DB.prepare(
+    `
+      SELECT
+        u.id,
+        u.email,
+        u.password,
+        u.role,
+        u.tenant_id,
+        a.api_key
+      FROM users u
+      LEFT JOIN api_keys a
+        ON a.user_id = u.id
+        AND a.status = 'active'
+      WHERE u.email = ?
+      ORDER BY a.id DESC
+      LIMIT 1
+    `
+  )
+    .bind(email)
+    .first<LoginUserRow>();
+
+  if (!user) {
+    return c.json(
+      {
+        error: "Invalid credentials",
+      },
+      401
+    );
+  }
+
+  const passwordHash = await hashPassword(password);
+  if (passwordHash !== user.password) {
+    return c.json(
+      {
+        error: "Invalid credentials",
+      },
+      401
+    );
+  }
+
+  if (!user.api_key) {
+    const generatedApiKey = "sk_live_" + crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      `INSERT INTO api_keys (user_id, api_key, status) VALUES (?, ?, 'active')`
+    )
+      .bind(user.id, generatedApiKey)
+      .run();
+    user.api_key = generatedApiKey;
+  }
+
+  return c.json({
+    success: true,
+    role: user.role,
+    tenantId: user.tenant_id,
+    apiKey: user.api_key,
+    email: user.email,
   });
 });
 
@@ -81,6 +264,18 @@ app.post("/config", async (c) => {
   const window = body.window;
   const algorithm =
     body.algorithm || "sliding_window";
+
+  const apiKey = c.req.header("x-api-key");
+  if (apiKey) {
+    const owner = await getUserByApiKey(c.env, apiKey);
+    if (!owner || owner.status !== "active") {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    if (owner.role === "client" && owner.tenant_id !== tenantId) {
+      return c.json({ error: "Forbidden for this tenant" }, 403);
+    }
+  }
 
   if (
     !tenantId ||
@@ -248,6 +443,133 @@ app.post("/check", async (c) => {
 
 app.route("/metrics", metrics);
 app.route("/top-keys", topKeys);
+
+app.get("/client/metrics", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  if (!apiKey) {
+    return c.json({ error: "API key missing" }, 401);
+  }
+
+  const owner = await getUserByApiKey(c.env, apiKey);
+  if (!owner || owner.status !== "active") {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const result = await c.env.DB.prepare(
+    `
+      SELECT
+        total_requests,
+        blocked_requests
+      FROM logs_summary
+      WHERE api_key = ?
+      LIMIT 1
+    `
+  )
+    .bind(apiKey)
+    .first<{ total_requests: number; blocked_requests: number }>();
+
+  const totalRequests = Number(result?.total_requests || 0);
+  const blockedRequests = Number(result?.blocked_requests || 0);
+  const blockRate =
+    totalRequests > 0
+      ? ((blockedRequests / totalRequests) * 100).toFixed(2)
+      : "0";
+
+  return c.json({
+    totalRequests,
+    blockedRequests,
+    blockRate: `${blockRate}%`,
+  });
+});
+
+app.get("/client/report", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  if (!apiKey) {
+    return c.json({ error: "API key missing" }, 401);
+  }
+
+  const owner = await getUserByApiKey(c.env, apiKey);
+  if (!owner || owner.status !== "active") {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const result = await c.env.DB.prepare(
+    `
+      SELECT
+        total_requests,
+        blocked_requests
+      FROM logs_summary
+      WHERE api_key = ?
+      LIMIT 1
+    `
+  )
+    .bind(apiKey)
+    .first<{ total_requests: number; blocked_requests: number }>();
+
+  const totalRequests = Number(result?.total_requests || 0);
+  const blockedRequests = Number(result?.blocked_requests || 0);
+
+  const abuseScore =
+    totalRequests > 0
+      ? ((blockedRequests / totalRequests) * 100).toFixed(2)
+      : "0";
+
+  const recommendation =
+    Number(abuseScore) > 70
+      ? "Temporary block recommended"
+      : "Monitor traffic";
+
+  return c.json({
+    report: "Tenant Abuse Report",
+    topApiKey: apiKey,
+    totalRequests,
+    blockedRequests,
+    abuseScore: `${abuseScore}%`,
+    recommendation,
+  });
+});
+
+app.post("/reset", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  if (!apiKey) {
+    return c.json({ error: "API key missing" }, 401);
+  }
+
+  const owner = await getUserByApiKey(c.env, apiKey);
+  if (!owner || owner.status !== "active") {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = (await c.req.json()) as {
+    tenantId?: string;
+    route?: string;
+  };
+
+  const tenantId = body.tenantId?.trim();
+  const route = body.route?.trim();
+
+  if (!tenantId || !route) {
+    return c.json({ error: "tenantId and route are required" }, 400);
+  }
+
+  if (owner.role === "client" && owner.tenant_id !== tenantId) {
+    return c.json({ error: "Forbidden for this tenant" }, 403);
+  }
+
+  const configKey = `${tenantId}:${route}`;
+  const id = c.env.RATE_LIMITER.idFromName(configKey);
+  const stub = c.env.RATE_LIMITER.get(id);
+  const response = await stub.fetch("http://do/reset", { method: "DELETE" });
+
+  if (!response.ok) {
+    return c.json({ error: "Failed to reset counters" }, 500);
+  }
+
+  return c.json({
+    success: true,
+    message: `Counter reset for ${configKey}`,
+  });
+});
 app.get("/run-report", async (c) => {
   const result = await c.env.DB.prepare(`
     SELECT

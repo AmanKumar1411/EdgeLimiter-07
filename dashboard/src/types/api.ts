@@ -1,4 +1,4 @@
-type RegisterRequest = {
+export type RegisterRequest = {
   email: string;
   tenantId: string;
   role?: string;

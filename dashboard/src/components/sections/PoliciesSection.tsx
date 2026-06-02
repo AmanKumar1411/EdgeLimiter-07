@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { Save, RotateCcw, CheckCircle2 } from "lucide-react";
-import { createPolicy, type Session } from "../lib/api";
-import { StatusBadge } from "../components/StatusBadge";
-import { Spinner } from "../components/Loading";
-import { Field, ErrorAlert } from "../pages/RegisterPage";
-import { logActivity } from "../lib/activity";
+import { savePolicy, type Session } from "../../lib/api";
+import { StatusBadge } from "../StatusBadge";
+import { Spinner } from "../Loading";
+import { Field, ErrorAlert } from "@/pages/RegisterPage";
+import { logActivity } from "../../lib/activity";
 
 const DEFAULTS = {
   route: "",
-  apiKey: "",
   limit: 100,
   window: 60,
   algorithm: "sliding_window",
@@ -17,30 +16,23 @@ const DEFAULTS = {
 export function PoliciesSection({
   session,
   onTenantChange,
+  viewedTenantId,
 }: {
   session: Session;
   onTenantChange: (id: string) => void;
+  viewedTenantId?: string;
 }) {
-  const [tenantId, setTenantId] = useState(session.tenantId);
-
-  /*
-    NEW:
-    API Key input section
-  */
-  const [apiKey, setApiKey] = useState(session.apiKey || DEFAULTS.apiKey);
-
+  const [tenantId, setTenantId] = useState(viewedTenantId ?? session.tenantId);
   const [route, setRoute] = useState(DEFAULTS.route);
   const [limit, setLimit] = useState<number>(DEFAULTS.limit);
   const [windowSec, setWindowSec] = useState<number>(DEFAULTS.window);
   const [algorithm, setAlgorithm] = useState<string>(DEFAULTS.algorithm);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   function reset() {
     setRoute(DEFAULTS.route);
-    setApiKey(session.apiKey || DEFAULTS.apiKey);
     setLimit(DEFAULTS.limit);
     setWindowSec(DEFAULTS.window);
     setAlgorithm(DEFAULTS.algorithm);
@@ -50,36 +42,27 @@ export function PoliciesSection({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     setError(null);
     setSuccess(null);
     setLoading(true);
-
     try {
-      const response = await createPolicy(
+      const { data } = await savePolicy(
         {
           tenantId: tenantId.trim(),
           route: route.trim(),
           limit,
           window: windowSec,
-          algorithm: algorithm as
-            | "sliding_window"
-            | "fixed_window"
-            | "token_bucket",
+          algorithm,
         },
-        apiKey.trim(),
+        session.apiKey,
       );
-
-      setSuccess(response.message || "Policy saved successfully.");
-
+      setSuccess(data.message || "Policy saved successfully.");
       onTenantChange(tenantId.trim());
-
       logActivity({
         title: "Policy saved",
         detail: `${tenantId} | ${route} | ${algorithm}`,
         tone: "success",
       });
-
       setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save policy");
@@ -93,13 +76,11 @@ export function PoliciesSection({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
           <h2 className="text-2xl font-bold tracking-tight">Create Policy</h2>
-
           <p className="text-muted-foreground max-w-2xl">
             Define per-route rate limit rules and deploy them globally to all
             edge POPs.
           </p>
         </div>
-
         <StatusBadge tone="secondary">Client Admin</StatusBadge>
       </header>
 
@@ -114,20 +95,6 @@ export function PoliciesSection({
               className="form-input font-mono"
             />
           </Field>
-
-          {/* NEW API KEY FIELD */}
-          <Field label="API Key">
-            <input
-              required
-              type="password"
-              disabled={loading}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="edge_live_xxxxxxxxx"
-              className="form-input font-mono"
-            />
-          </Field>
-
           <Field label="Route">
             <input
               required
@@ -138,7 +105,6 @@ export function PoliciesSection({
               className="form-input font-mono"
             />
           </Field>
-
           <Field label="Limit" hint="Requests per window">
             <input
               required
@@ -150,7 +116,6 @@ export function PoliciesSection({
               className="form-input"
             />
           </Field>
-
           <Field label="Window" hint="Seconds per rate limit window">
             <input
               required
@@ -162,7 +127,6 @@ export function PoliciesSection({
               className="form-input"
             />
           </Field>
-
           <Field label="Algorithm">
             <select
               disabled={loading}
@@ -178,7 +142,6 @@ export function PoliciesSection({
         </div>
 
         {error && <ErrorAlert message={error} />}
-
         {success && (
           <div className="flex items-start gap-2.5 rounded-lg border border-success/40 bg-success/10 px-3.5 py-3 text-sm text-success">
             <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
@@ -189,10 +152,8 @@ export function PoliciesSection({
         <div className="flex flex-wrap gap-3">
           <button type="submit" disabled={loading} className="btn-primary">
             {loading ? <Spinner /> : <Save className="h-4 w-4" />}
-
             {loading ? "Saving..." : "Save Policy"}
           </button>
-
           <button
             type="button"
             onClick={reset}

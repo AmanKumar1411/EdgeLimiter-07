@@ -20,7 +20,7 @@ export default function Register() {
     setError(null);
     setLoading(true);
     try {
-      const data = await registerUser({ email, tenantId, role });
+      const { data } = await registerUser({ email, tenantId, role });
       if (!data.apiKey) throw new Error("No API key returned");
       setApiKey(data.apiKey);
     } catch (err) {

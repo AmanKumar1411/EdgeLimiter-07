@@ -1,246 +1,198 @@
-import type {
-  CheckRequest,
-  CheckResponse,
-  ConfigRequest,
-  ConfigResponse,
-  LoginRequest,
-  LoginResponse,
-  MetricsResponse,
-  ResetCounterRequest,
-  ResetCounterResponse,
-  RegisterRequest,
-  RegisterResponse,
-  RunReportResponse,
-  SecurityReport,
-  TopKey,
-} from "../types/api";
-import { clearSession, getSession, saveSession, type AuthSession } from "../auth/session";
+// EdgeLimiter API client
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || "https://edge-limiter.edgeaman.workers.dev";
 
-const DEFAULT_BASE_URL = "https://edge-limiter.edgeaman.workers.dev";
-
-const BASE_URL = (() => {
-  const envBase = import.meta.env.VITE_API_BASE as string | undefined;
-  const trimmed = envBase?.trim();
-  if (!trimmed) {
-    return DEFAULT_BASE_URL;
-  }
-  return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
-})();
-
-export class ApiError extends Error {
-  status: number;
-  payload?: unknown;
-
-  constructor(message: string, status: number, payload?: unknown) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.payload = payload;
-  }
+export interface Session {
+  tenantId: string;
+  apiKey: string;
+  email?: string;
+  role?: "client" | "super_admin";
 }
 
-function buildUrl(path: string) {
-  if (!path.startsWith("/")) {
-    return `${BASE_URL}/${path}`;
-  }
-  return `${BASE_URL}${path}`;
-}
-
-function readNumber(value: string | null) {
-  if (!value) {
-    return undefined;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-async function requestJson<T>(path: string, options: RequestInit) {
-  const response = await fetch(buildUrl(path), {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {}),
-    },
-  });
-
-  const contentType = response.headers.get("Content-Type") ?? "";
-  const isJson = contentType.includes("application/json");
-  const data = isJson ? await response.json() : null;
-
-  if (!response.ok) {
-    const message =
-      (data && typeof data === "object" && "error" in data && String(data.error)) ||
-      (data && typeof data === "object" && "message" in data && String(data.message)) ||
-      `Request failed with status ${response.status}`;
-    throw new ApiError(message, response.status, data);
-  }
-
-  return data as T;
-}
-
-export function getApiBaseUrl() {
-  return BASE_URL;
-}
-
-export async function registerUser(payload: RegisterRequest) {
-  return requestJson<RegisterResponse>("/register", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function loginUser(payload: LoginRequest) {
-  return requestJson<LoginResponse>("/login", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function createPolicy(
-  payload: ConfigRequest,
-  apiKey: string
-) {
-  const safeApiKey = String(apiKey)
-    .trim()
-    .replace(/[^\x00-\x7F]/g, "");
-
-  return requestJson<ConfigResponse>("/config", {
-    method: "POST",
-    headers: {
-      "x-api-key": safeApiKey,
-    },
-    body: JSON.stringify(payload),
-  });
-}
-
-export type CheckResult = {
-  status: number;
-  data: CheckResponse;
-  rateLimit: {
-    limit?: number;
-    remaining?: number;
-    reset?: number;
-    retryAfter?: number;
-  };
-};
-
-export type Session = AuthSession;
+const SESSION_KEY = "edge-limiter-session";
 
 export const sessionStore = {
-  get: getSession,
-  set: saveSession,
-  clear: clearSession,
+  get(): Session | null {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      return raw ? (JSON.parse(raw) as Session) : null;
+    } catch {
+      return null;
+    }
+  },
+  set(s: Session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  },
+  clear() {
+    localStorage.removeItem(SESSION_KEY);
+  },
 };
 
-export async function runCheck(
-  payload: CheckRequest,
-  apiKey: string
-) {
-  const safeApiKey = String(apiKey)
-    .trim()
-    .replace(/[^\x00-\x7F]/g, "");
+interface RequestOpts {
+  method?: string;
+  body?: unknown;
+  apiKey?: string;
+  query?: Record<string, string>;
+}
 
-  const response = await fetch(buildUrl("/check"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": safeApiKey,
-    },
-    body: JSON.stringify(payload),
-  });
+export interface ApiResponse<T> {
+  data: T;
+  status: number;
+  headers: {
+    limit?: string | null;
+    remaining?: string | null;
+    reset?: string | null;
+    retryAfter?: string | null;
+  };
+}
 
-  const data = (await response.json()) as CheckResponse;
+export async function apiRequest<T = unknown>(path: string, opts: RequestOpts = {}): Promise<ApiResponse<T>> {
+  const { method = "GET", body, apiKey, query } = opts;
+  const url = new URL(API_BASE + path);
+  if (query) Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  if (!response.ok && response.status !== 429) {
-    const message =
-      (data as unknown as { error?: string })?.error ??
-      "Check request failed";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (apiKey) headers["x-api-key"] = apiKey;
 
-    throw new ApiError(
-      message,
-      response.status,
-      data
-    );
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw new Error("Failed to connect. Please check your connection.");
   }
 
-  const rateLimit = {
-    limit: readNumber(
-      response.headers.get("X-RateLimit-Limit")
-    ),
-    remaining: readNumber(
-      response.headers.get("X-RateLimit-Remaining")
-    ),
-    reset: readNumber(
-      response.headers.get("X-RateLimit-Reset")
-    ),
-    retryAfter: readNumber(
-      response.headers.get("Retry-After")
-    ),
-  };
+  let data: unknown = null;
+  const text = await res.text();
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  // For 429, we still return the body (it's a valid "blocked" response for /check)
+  if (!res.ok && res.status !== 429) {
+    const msg =
+      (data && typeof data === "object" && ("error" in data || "message" in data)
+        ? (data as Record<string, string>).error || (data as Record<string, string>).message
+        : null) || `Request failed with status ${res.status}`;
+    throw new Error(msg);
+  }
 
   return {
-    status: response.status,
-    data,
-    rateLimit,
-  } satisfies CheckResult;
-}
-
-export async function checkRate(tenantId: string, route: string, apiKey: string) {
-  return runCheck({ tenantId, route }, apiKey);
-}
-
-export async function fetchMetrics() {
-  return requestJson<MetricsResponse>("/metrics", {
-    method: "GET",
-  });
-}
-
-export async function fetchClientMetrics(apiKey: string) {
-  return requestJson<MetricsResponse>("/client/metrics", {
-    method: "GET",
+    data: data as T,
+    status: res.status,
     headers: {
-      "x-api-key": apiKey,
+      limit: res.headers.get("X-RateLimit-Limit"),
+      remaining: res.headers.get("X-RateLimit-Remaining"),
+      reset: res.headers.get("X-RateLimit-Reset"),
+      retryAfter: res.headers.get("Retry-After"),
     },
-  });
+  };
 }
 
-export async function fetchTopKeys() {
-  return requestJson<TopKey[]>("/top-keys", {
-    method: "GET",
-  });
+// Typed endpoints
+export interface RegisterReq {
+  email: string;
+  tenantId: string;
+  role: "client" | "super_admin";
 }
-
-export async function runReport() {
-  return requestJson<RunReportResponse>("/run-report", {
-    method: "GET",
-  });
+export interface RegisterRes {
+  success: boolean;
+  email: string;
+  tenantId: string;
+  role: string;
+  apiKey: string;
 }
+export const registerUser = (body: RegisterReq) =>
+  apiRequest<RegisterRes>("/register", { method: "POST", body });
 
-export async function runClientReport(apiKey: string) {
-  return requestJson<RunReportResponse>("/client/report", {
-    method: "GET",
-    headers: {
-      "x-api-key": apiKey,
-    },
-  });
+export interface CheckRes {
+  tenant?: string;
+  route?: string;
+  allowed?: boolean;
+  remaining?: number;
+  retryAfter?: number;
+  algorithm?: string;
 }
+export const checkRate = (tenantId: string, route: string, apiKey: string) =>
+  apiRequest<CheckRes>("/check", { method: "POST", body: { tenantId, route }, apiKey });
 
-export async function getSecurityReport(tenantId: string, apiKey: string) {
-  const query = new URLSearchParams({ tenantId });
-  return requestJson<SecurityReport>(`/security-report?${query.toString()}`, {
-    method: "GET",
-    headers: {
-      "x-api-key": apiKey,
-    },
-  });
+export interface ConfigReq {
+  tenantId: string;
+  route: string;
+  limit: number;
+  window: number;
+  algorithm: string;
 }
-
-export async function resetCounter(payload: ResetCounterRequest, apiKey: string) {
-  return requestJson<ResetCounterResponse>("/reset", {
+export const savePolicy = (body: ConfigReq, apiKey: string) =>
+  apiRequest<{ success: boolean; message: string; config: unknown }>("/config", {
     method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-    },
-    body: JSON.stringify(payload),
+    body,
+    apiKey,
   });
+
+export interface MetricsRes {
+  totalRequests: number;
+  blockedRequests: number;
+  blockRate: string;
 }
+export const getMetrics = () => apiRequest<MetricsRes>("/metrics");
+export const getClientMetrics = (apiKey: string) =>
+  apiRequest<MetricsRes>("/client/metrics", { apiKey });
+
+export interface TopKey {
+  apiKey: string;
+  tenantId: string | null;
+  totalRequests: number;
+  blockedRequests: number;
+  abuseScore: number;
+}
+export const getTopKeys = () => apiRequest<TopKey[]>("/top-keys");
+
+export interface SecurityLog {
+  id: string;
+  route: string;
+  ipAddress: string;
+  country: string;
+  allowed: boolean;
+  reason: string;
+  createdAt: string;
+}
+export interface AbusiveIp {
+  ipAddress: string;
+  country: string;
+  totalRequests: number;
+  blockedRequests: number;
+  tenantCount: number;
+  lastSeen: string;
+}
+export interface SecurityReport {
+  tenantId: string;
+  recentLogs: SecurityLog[];
+  topAbusiveIps: AbusiveIp[];
+  aiSummary: string;
+  abuseScore: number;
+  recommendation: string;
+}
+export const getSecurityReport = (tenantId: string, apiKey: string) =>
+  apiRequest<SecurityReport>("/security-report", { apiKey, query: { tenantId } });
+
+export const resetCounter = (tenantId: string, route: string, apiKey: string) =>
+  apiRequest<{ success: boolean; message: string }>("/reset", {
+    method: "POST",
+    body: { tenantId, route },
+    apiKey,
+  });
+
+export interface WhoAmIRes {
+  email: string;
+  role: "client" | "super_admin";
+  tenantId: string;
+}
+export const whoAmI = (apiKey: string) =>
+  apiRequest<WhoAmIRes>("/whoami", { apiKey });

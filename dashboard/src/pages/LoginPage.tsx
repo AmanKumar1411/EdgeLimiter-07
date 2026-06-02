@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Shield } from "lucide-react";
 
-import { sessionStore } from "@/lib/api";
+import { sessionStore, whoAmI } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Spinner } from "@/components/Loading";
 
@@ -17,7 +17,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     setError(null);
@@ -32,15 +32,25 @@ export default function Login() {
       return;
     }
 
-    sessionStore.set({
-      email: tid,
-      tenantId: tid,
-      apiKey: key,
-      role: "client",
-    });
-
-    navigate("/dashboard", { replace: true });
-    setLoading(false);
+    try {
+      const { data } = await whoAmI(key);
+      if (data.tenantId !== tid) {
+        setError("Tenant ID does not match this API key.");
+        setLoading(false);
+        return;
+      }
+      sessionStore.set({
+        email: data.email,
+        tenantId: data.tenantId,
+        apiKey: key,
+        role: data.role,
+      });
+      navigate(data.role === "super_admin" ? "/admin" : "/dashboard", { replace: true });
+    } catch {
+      setError("Invalid API key or tenant. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

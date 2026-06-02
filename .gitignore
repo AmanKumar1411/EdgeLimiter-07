@@ -37,3 +37,9 @@ dashboard/.vite/
 
 # Misc
 *.tsbuildinfo
+
+# Planning / temporary docs (not part of the shipped codebase)
+ADMIN_CLIENT_FLOW_PLAN.md
+FLOW_DIAGRAMS.md
+LOVABLE_FRONTEND_PROMPT.md
+README_FRONTEND_REBUILD.md

@@ -8,22 +8,23 @@ export async function queue(
   batch: MessageBatch<SecurityQueueEvent>,
   env: Env
 ) {
-  await ensureSecurityLogsTable(env);
-
   for (const message of batch.messages) {
-    const body = message.body;
+    try {
+      const body = message.body;
 
-    if (isSecurityLogEvent(body)) {
-      await storeSecurityLog(env, body);
-    } else {
-      await updateLogSummary(
-        env,
-        body.apiKey,
-        body.blocked
-      );
+      if (isSecurityLogEvent(body)) {
+        await storeSecurityLog(env, body);
+      } else {
+        await updateLogSummary(env, body.apiKey, body.blocked);
+      }
+
+      message.ack();
+    } catch (err) {
+      // Retry this message independently; don't let one failure
+      // block acking already-processed messages in the same batch.
+      console.error("Queue message processing failed:", err);
+      message.retry();
     }
-
-    message.ack();
   }
 }
 
@@ -33,6 +34,7 @@ function isSecurityLogEvent(
   return "type" in event && event.type === "security_log";
 }
 
+// Called once at startup / migration — NOT on every request.
 export async function ensureSecurityLogsTable(env: Env) {
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS security_logs (
@@ -122,40 +124,18 @@ async function updateLogSummary(
   apiKey: string,
   blocked: number
 ) {
-  if (!apiKey) {
-    return;
-  }
+  if (!apiKey) return;
 
-  const existingLog =
-    await env.DB.prepare(
-      `SELECT * FROM logs_summary
-       WHERE api_key = ?`
-    )
-      .bind(apiKey)
-      .first();
-
-  if (existingLog) {
-    await env.DB.prepare(`
-      UPDATE logs_summary
-      SET
-        total_requests = total_requests + 1,
-        blocked_requests = blocked_requests + ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE api_key = ?
-    `)
-      .bind(blocked, apiKey)
-      .run();
-  } else {
-    await env.DB.prepare(`
-      INSERT INTO logs_summary
-      (
-        api_key,
-        total_requests,
-        blocked_requests
-      )
-      VALUES (?, ?, ?)
-    `)
-      .bind(apiKey, 1, blocked)
-      .run();
-  }
+  // Atomic upsert — eliminates the SELECT→INSERT race condition that
+  // caused duplicate rows and double-counting under concurrent processing.
+  await env.DB.prepare(`
+    INSERT INTO logs_summary (api_key, total_requests, blocked_requests)
+    VALUES (?, 1, ?)
+    ON CONFLICT(api_key) DO UPDATE SET
+      total_requests    = total_requests + 1,
+      blocked_requests  = blocked_requests + excluded.blocked_requests,
+      updated_at        = CURRENT_TIMESTAMP
+  `)
+    .bind(apiKey, blocked)
+    .run();
 }

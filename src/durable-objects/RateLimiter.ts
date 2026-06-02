@@ -150,6 +150,11 @@ export class RateLimiter {
     if (timestamps.length < limit) {
       timestamps.push(now);
       allowed = true;
+      // Keep at most `limit` entries to prevent the stored array from
+      // exceeding the Cloudflare DO 128KB per-value storage limit.
+      if (timestamps.length > limit) {
+        timestamps = timestamps.slice(-limit);
+      }
     } else {
       retryAfter =
         windowSeconds - (now - timestamps[0]);
@@ -195,10 +200,6 @@ export class RateLimiter {
 
     if (storedWindow !== currentWindow) {
       count = 0;
-      await this.state.storage.put(
-        "window",
-        currentWindow
-      );
     }
 
     let allowed = false;
@@ -208,15 +209,17 @@ export class RateLimiter {
       allowed = true;
     }
 
-    await this.state.storage.put(
-      "count",
-      count
-    );
+    // Atomic batch write: both window and count are committed together,
+    // preventing stale count surviving a DO eviction at the window boundary.
+    await this.state.storage.put({
+      window: currentWindow,
+      count,
+    });
 
     return {
       allowed,
       remaining: Math.max(0, limit - count),
-      retryAfter: windowSeconds,
+      retryAfter: allowed ? 0 : (currentWindow + 1) * windowSeconds - now,
       algorithm: "fixed_window",
     };
   }
@@ -270,10 +273,16 @@ export class RateLimiter {
       lastRefill
     );
 
+    // Time (seconds) until one full token is available again.
+    const retryAfter =
+      tokens < 1
+        ? Math.ceil((1 - tokens) / refillRate / 1000)
+        : 0;
+
     return {
       allowed,
       remaining: Math.floor(tokens),
-      retryAfter: tokens < 1 ? 1 : 0,
+      retryAfter,
       algorithm: "token_bucket",
     };
   }

@@ -1,40 +1,70 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, TrendingUp, AlertTriangle } from "lucide-react";
-import { fetchMetrics, fetchTopKeys } from "../lib/api";
-import type { MetricsResponse, TopKey } from "../types/api";
-import { StatusBadge } from "../components/StatusBadge";
-import { Skeleton, Spinner } from "../components/Loading";
-import { ErrorAlert } from "../pages/RegisterPage";
+import {
+  getMetrics,
+  getClientMetrics,
+  getTopKeys,
+  type MetricsRes,
+  type TopKey,
+  type Session,
+} from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Skeleton, Spinner } from "@/components/Loading";
+import { ErrorAlert } from "@/pages/RegisterPage";
+
+const REFRESH_MS = 60_000;
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-export function AnalyticsSection() {
-  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
+interface Props {
+  session?: Session;
+  viewedTenantId?: string;
+  /** When true, use system-wide /metrics. When false (default), use /client/metrics scoped to session/viewed key. */
+  systemWide?: boolean;
+}
+
+export function AnalyticsSection({
+  session,
+  viewedTenantId,
+  systemWide,
+}: Props = {}) {
+  const [metrics, setMetrics] = useState<MetricsRes | null>(null);
   const [topKeys, setTopKeys] = useState<TopKey[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
+  const useSystem = systemWide || !session;
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [m, t] = await Promise.all([fetchMetrics(), fetchTopKeys()]);
-      setMetrics(m);
-      setTopKeys(Array.isArray(t) ? t : []);
+      const metricsP = useSystem
+        ? getMetrics()
+        : getClientMetrics(session!.apiKey);
+      const [m, t] = await Promise.all([metricsP, getTopKeys()]);
+      setMetrics(m.data);
+      setTopKeys(Array.isArray(t.data) ? t.data : []);
       setUpdatedAt(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load analytics");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [useSystem, session]);
 
   useEffect(() => {
     refresh();
+    const id = setInterval(refresh, REFRESH_MS);
+    return () => clearInterval(id);
   }, [refresh]);
+
+  const scopeLabel = useSystem
+    ? "System-wide"
+    : `Tenant ${viewedTenantId ?? session?.tenantId ?? ""}`;
 
   return (
     <div className="space-y-6">
@@ -42,7 +72,7 @@ export function AnalyticsSection() {
         <div className="space-y-2">
           <h2 className="text-2xl font-bold tracking-tight">Analytics</h2>
           <p className="text-muted-foreground">
-            Traffic volume and abuse signals across the edge.
+            Traffic volume and abuse signals — {scopeLabel}.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -160,23 +190,17 @@ export function AnalyticsSection() {
                         {formatNumber(k.blockedRequests)}
                       </td>
                       <td className="px-2 py-2.5 text-right">
-                        {(() => {
-                          const score = Number(k.abuseScore);
-                          const safeScore = Number.isFinite(score) ? score : 0;
-                          return (
-                            <span
-                              className={`font-medium ${
-                                safeScore > 70
-                                  ? "text-destructive"
-                                  : safeScore > 40
-                                    ? "text-warning"
-                                    : "text-success"
-                              }`}
-                            >
-                              {Math.round(safeScore)}%
-                            </span>
-                          );
-                        })()}
+                        <span
+                          className={`font-medium ${
+                            k.abuseScore > 70
+                              ? "text-destructive"
+                              : k.abuseScore > 40
+                                ? "text-warning"
+                                : "text-success"
+                          }`}
+                        >
+                          {Math.round(k.abuseScore)}%
+                        </span>
                       </td>
                     </tr>
                   ))}

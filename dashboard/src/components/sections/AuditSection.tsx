@@ -1,5 +1,5 @@
-import { useActivity, formatRelative } from "../lib/activity";
-import { StatusBadge } from "../components/StatusBadge";
+import { useActivity, formatRelative } from "@/lib/activity";
+import { StatusBadge } from "@/components/StatusBadge";
 import { ScrollText } from "lucide-react";
 
 export function AuditSection() {

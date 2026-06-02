@@ -7,7 +7,12 @@ interface BadgeProps {
   className?: string;
 }
 
-export function StatusBadge({ children, tone = "primary", pulse, className }: BadgeProps) {
+export function StatusBadge({
+  children,
+  tone = "primary",
+  pulse,
+  className,
+}: BadgeProps) {
   const tones: Record<string, string> = {
     primary: "bg-primary/10 text-primary border-primary/30",
     secondary: "bg-secondary/10 text-secondary border-secondary/30",
@@ -28,7 +33,11 @@ export function StatusBadge({ children, tone = "primary", pulse, className }: Ba
         <span
           className={cn(
             "inline-block h-1.5 w-1.5 rounded-full pulse-live",
-            tone === "success" ? "bg-success" : tone === "danger" ? "bg-destructive" : "bg-primary",
+            tone === "success"
+              ? "bg-success"
+              : tone === "danger"
+                ? "bg-destructive"
+                : "bg-primary",
           )}
         />
       )}

@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { UserPlus, ArrowRight } from "lucide-react";
-import { registerUser } from "../lib/api";
-import { StatusBadge } from "../components/StatusBadge";
-import { Spinner } from "../components/Loading";
-import { CopyField } from "../components/CopyField";
-import { Field, ErrorAlert } from "../pages/RegisterPage";
-import { logActivity } from "../lib/activity";
+import { registerUser } from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Spinner } from "@/components/Loading";
+import { CopyField } from "@/components/CopyField";
+import { Field, ErrorAlert } from "@/pages/RegisterPage";
+import { logActivity } from "@/lib/activity";
 
 export function RegisterUserSection() {
   const [email, setEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
-  const [role, setRole] = useState<"client" | "super_admin">("client");
+  const role: "client" = "client";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function RegisterUserSection() {
     setApiKey(null);
     setLoading(true);
     try {
-      const data = await registerUser({ email, tenantId, role });
+      const { data } = await registerUser({ email, tenantId, role });
       if (!data.apiKey) throw new Error("No API key returned");
       setApiKey(data.apiKey);
       logActivity({
@@ -39,7 +39,6 @@ export function RegisterUserSection() {
   function reset() {
     setEmail("");
     setTenantId("");
-    setRole("client");
     setApiKey(null);
     setError(null);
   }
@@ -81,17 +80,11 @@ export function RegisterUserSection() {
               />
             </Field>
             <Field label="Role">
-              <select
-                disabled={loading}
-                value={role}
-                onChange={(e) =>
-                  setRole(e.target.value as "client" | "super_admin")
-                }
-                className="form-input"
-              >
-                <option value="client">Client</option>
-                <option value="super_admin">Super Admin</option>
-              </select>
+              <input
+                disabled
+                value="Client"
+                className="form-input opacity-70 cursor-not-allowed"
+              />
             </Field>
           </div>
 

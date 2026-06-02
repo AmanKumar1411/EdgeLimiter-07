@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { ShieldAlert, Brain, Globe, RefreshCw } from "lucide-react";
-import { getSecurityReport, type Session } from "../lib/api";
-import type { SecurityReport } from "../types/api";
-import { StatusBadge } from "../components/StatusBadge";
-import { Skeleton, Spinner } from "../components/Loading";
-import { ErrorAlert } from "../pages/RegisterPage";
+import {
+  getSecurityReport,
+  type Session,
+  type SecurityReport,
+} from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Skeleton, Spinner } from "@/components/Loading";
+import { ErrorAlert } from "@/pages/RegisterPage";
 
 const REFRESH_MS = 60_000;
 
@@ -21,7 +24,19 @@ function scoreLabel(score: number): string {
   return "Low";
 }
 
-export function SecurityIntelSection({ session }: { session: Session }) {
+function renderAiSummary(raw: string | undefined | null): string {
+  if (!raw) return "No summary available.";
+  return String(raw).trim();
+}
+
+export function SecurityIntelSection({
+  session,
+  viewedTenantId,
+}: {
+  session: Session;
+  viewedTenantId?: string;
+}) {
+  const tenantId = viewedTenantId ?? session.tenantId;
   const [report, setReport] = useState<SecurityReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +46,7 @@ export function SecurityIntelSection({ session }: { session: Session }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSecurityReport(session.tenantId, session.apiKey);
+      const { data } = await getSecurityReport(tenantId, session.apiKey);
       setReport(data);
       setUpdatedAt(new Date());
     } catch (err) {
@@ -41,7 +56,7 @@ export function SecurityIntelSection({ session }: { session: Session }) {
     } finally {
       setLoading(false);
     }
-  }, [session.tenantId, session.apiKey]);
+  }, [tenantId, session.apiKey]);
 
   useEffect(() => {
     refresh();
@@ -67,7 +82,7 @@ export function SecurityIntelSection({ session }: { session: Session }) {
             )}
           </div>
           <p className="text-muted-foreground">
-            AI-powered threat analysis for tenant {session.tenantId}.
+            AI-powered threat analysis for tenant {tenantId}.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -138,7 +153,7 @@ export function SecurityIntelSection({ session }: { session: Session }) {
                   Summary
                 </div>
                 <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                  {report.aiSummary || "No summary available."}
+                  {renderAiSummary(report.aiSummary)}
                 </p>
               </div>
 

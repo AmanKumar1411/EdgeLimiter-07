@@ -8,23 +8,9 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requireRole }: ProtectedRouteProps) {
   const session = sessionStore.get();
-  if (!session) {
-    return (
-      <Navigate
-        to={requireRole === "super_admin" ? "/admin-login" : "/login"}
-        replace
-      />
-    );
+  if (!session) return <Navigate to="/login" replace />;
+  if (requireRole === "super_admin" && session.role !== "super_admin") {
+    return <Navigate to="/dashboard" replace />;
   }
-
-  if (requireRole && session.role !== requireRole) {
-    return (
-      <Navigate
-        to={session.role === "super_admin" ? "/admin" : "/dashboard"}
-        replace
-      />
-    );
-  }
-
   return <>{children}</>;
 }

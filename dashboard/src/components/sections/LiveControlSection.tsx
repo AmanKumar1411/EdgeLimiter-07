@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Zap, CheckCircle2, XCircle, Sparkles } from "lucide-react";
-import { checkRate, type Session } from "../lib/api";
-import { StatusBadge } from "../components/StatusBadge";
-import { Spinner } from "../components/Loading";
-import { Field, ErrorAlert } from "../pages/RegisterPage";
-import { logActivity } from "../lib/activity";
+import { checkRate, type Session } from "@/lib/api";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Spinner } from "@/components/Loading";
+import { Field, ErrorAlert } from "@/pages/RegisterPage";
+import { logActivity } from "@/lib/activity";
 
 interface Result {
   allowed: boolean;
@@ -19,11 +19,14 @@ interface Result {
 export function LiveControlSection({
   session,
   onTenantChange,
+  viewedTenantId,
 }: {
   session: Session;
   onTenantChange: (id: string) => void;
+  viewedTenantId?: string;
 }) {
-  const [tenantId, setTenantId] = useState(session.tenantId);
+  const effectiveTenant = viewedTenantId ?? session.tenantId;
+  const [tenantId, setTenantId] = useState(effectiveTenant);
   const [route, setRoute] = useState("");
   const [apiKey, setApiKey] = useState(session.apiKey);
   const [loading, setLoading] = useState(false);
@@ -46,11 +49,11 @@ export function LiveControlSection({
       const allowed = res.status === 200 && res.data.allowed !== false;
       const result: Result = {
         allowed,
-        remaining: res.data.remaining ?? res.rateLimit.remaining ?? 0,
-        retryAfter: res.data.retryAfter ?? res.rateLimit.retryAfter ?? 0,
+        remaining: res.data.remaining ?? Number(res.headers.remaining ?? 0),
+        retryAfter: res.data.retryAfter ?? Number(res.headers.retryAfter ?? 0),
         algorithm: res.data.algorithm,
-        reset: res.rateLimit.reset ? String(res.rateLimit.reset) : null,
-        limit: res.rateLimit.limit ? String(res.rateLimit.limit) : null,
+        reset: res.headers.reset,
+        limit: res.headers.limit,
         checkedAt: new Date().toLocaleTimeString(),
       };
       setResult(result);

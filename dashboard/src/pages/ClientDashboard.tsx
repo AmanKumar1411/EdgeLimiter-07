@@ -2,12 +2,12 @@ import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { sessionStore, type Session } from "@/lib/api";
 import { DashboardShell, CLIENT_NAV } from "@/components/DashboardShell";
-import { LiveControlSection } from "../sections/LiveControlSection";
-import { PoliciesSection } from "../sections/PoliciesSection";
-import { AnalyticsSection } from "../sections/AnalyticsSection";
-import { OperationsSection } from "../sections/OperationsSection";
-import { AuditSection } from "../sections/AuditSection";
-import {SecurityIntelSection} from "../sections/SecurityIntelSection";
+import { LiveControlSection } from "../components/sections/LiveControlSection";
+import { PoliciesSection } from "../components/sections/PoliciesSection";
+import { AnalyticsSection } from "../components/sections/AnalyticsSection";
+import { OperationsSection } from "../components/sections/OperationsSection";
+import { AuditSection } from "../components/sections/AuditSection";
+import { SecurityIntelSection } from "../components/sections/SecurityIntelSection";
 
 export default function ClientDashboard() {
   const initial = sessionStore.get();

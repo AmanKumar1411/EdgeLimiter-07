@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { sessionStore } from "@/lib/api";
+import { sessionStore, whoAmI } from "@/lib/api";
 import { Field, ErrorAlert } from "./RegisterPage";
 
 export default function AdminLogin() {
@@ -13,14 +13,14 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function onSubmit(event: React.FormEvent) {
+  async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
 
     setError(null);
     setLoading(true);
 
     const tid = tenantId.trim();
-    const key = apiKey.trim().replace(/[^\x00-\x7F]/g, "");
+    const key = apiKey.trim();
 
     if (!tid || !key) {
       setError("Enter both Tenant ID and Admin API Key.");
@@ -28,18 +28,30 @@ export default function AdminLogin() {
       return;
     }
 
-    sessionStore.set({
-      email: tid,
-      tenantId: tid,
-      apiKey: key,
-      role: "super_admin",
-    });
-
-    navigate("/admin", {
-      replace: true,
-    });
-
-    setLoading(false);
+    try {
+      const { data } = await whoAmI(key);
+      if (data.role !== "super_admin") {
+        setError("This API key does not have admin privileges.");
+        setLoading(false);
+        return;
+      }
+      if (data.tenantId !== tid) {
+        setError("Tenant ID does not match this API key.");
+        setLoading(false);
+        return;
+      }
+      sessionStore.set({
+        email: data.email,
+        tenantId: data.tenantId,
+        apiKey: key,
+        role: "super_admin",
+      });
+      navigate("/admin", { replace: true });
+    } catch {
+      setError("Invalid credentials. Please check your API key and tenant.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

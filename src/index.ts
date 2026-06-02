@@ -5,10 +5,7 @@ import metrics from "./api/metrics";
 import topKeys from "./api/topKeys";
 import { pushToQueue } from "./queue/producer";
 import { createAuditLog } from "./utils/audit";
-import {
-  ensureSecurityLogsTable,
-  queue as consumeQueue,
-} from "./queue/consumer";
+import { queue as consumeQueue } from "./queue/consumer";
 import { generateAttackIntelligence } from "./security/intelligence";
 import type { Bindings, Env } from "./types/env";
 import type {
@@ -123,6 +120,22 @@ app.get("/health", (c) => {
 });
 
 
+app.get("/whoami", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  if (!apiKey) return c.json({ error: "API key missing" }, 401);
+
+  const user = await getUserByApiKey(c.env, apiKey);
+  if (!user || user.status !== "active") {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  return c.json({
+    email: user.email,
+    role: user.role,
+    tenantId: user.tenant_id,
+  });
+});
+
 app.post("/register", async (c) => {
   const body = (await c.req.json()) as {
     email?: string;
@@ -147,15 +160,6 @@ app.post("/register", async (c) => {
     return c.json(
       {
         error: "Public registration only supports role=client",
-      },
-      400
-    );
-  }
-
-  if (!isValidRole(role)) {
-    return c.json(
-      {
-        error: "Invalid role",
       },
       400
     );
@@ -273,17 +277,23 @@ app.post("/config", async (c) => {
   /*
    Required field validation
   */
-  if (
-    !tenantId ||
-    !route ||
-    !limit ||
-    !window
-  ) {
+  if (!tenantId || !route) {
     return c.json(
-      {
-        error:
-          "tenantId, route, limit, and window are required",
-      },
+      { error: "tenantId, route, limit, and window are required" },
+      400
+    );
+  }
+
+  if (!Number.isFinite(limit) || limit < 1) {
+    return c.json(
+      { error: "limit must be a positive integer" },
+      400
+    );
+  }
+
+  if (!Number.isFinite(window) || window < 1) {
+    return c.json(
+      { error: "window must be a positive integer (seconds)" },
       400
     );
   }
@@ -435,6 +445,26 @@ app.post("/check", async (c) => {
       ? body.route.trim()
       : "";
 
+  // Validate required fields first — before any DB lookups.
+  if (!tenantId || !route) {
+    c.executionCtx.waitUntil(
+      queueCheckSecurityLog(c.env, metadata, {
+        tenantId,
+        apiKey: apiKey || "",
+        route,
+        allowed: false,
+        remaining: 0,
+        retryAfter: 0,
+        reason: "tenant_route_missing",
+      })
+    );
+
+    return c.json(
+      { error: "tenantId and route are required" },
+      400
+    );
+  }
+
   if (!apiKey) {
     c.executionCtx.waitUntil(
       queueCheckSecurityLog(c.env, metadata, {
@@ -513,27 +543,6 @@ app.post("/check", async (c) => {
     );
   }
 
-  if (!tenantId || !route) {
-    c.executionCtx.waitUntil(
-      queueCheckSecurityLog(c.env, metadata, {
-        tenantId,
-        apiKey,
-        route,
-        allowed: false,
-        remaining: 0,
-        retryAfter: 0,
-        reason: "tenant_route_missing",
-      })
-    );
-
-    return c.json(
-      {
-        error: "tenantId and route are required",
-      },
-      400
-    );
-  }
-
   const configKey = `${tenantId}:${route}`;
 
   const config =
@@ -560,7 +569,16 @@ app.post("/check", async (c) => {
     );
   }
 
-  const parsedConfig = JSON.parse(config);
+  let parsedConfig: {
+    limit: number;
+    window: number;
+    algorithm: string;
+  };
+  try {
+    parsedConfig = JSON.parse(config);
+  } catch {
+    return c.json({ error: "Malformed policy config. Please recreate via /config." }, 500);
+  }
 
   const id =
     c.env.RATE_LIMITER.idFromName(configKey);
@@ -771,15 +789,20 @@ app.get("/security-report", async (c) => {
   }
 
   const owner = await getUserByApiKey(c.env, apiKey);
+
   if (!owner || owner.status !== "active") {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  if (owner.role === "client" && owner.tenant_id !== tenantId) {
-    return c.json({ error: "Forbidden for this tenant" }, 403);
+  if (
+    owner.role === "client" &&
+    owner.tenant_id !== tenantId
+  ) {
+    return c.json(
+      { error: "Forbidden for this tenant" },
+      403
+    );
   }
-
-  await ensureSecurityLogsTable(c.env);
 
   const recentLogsResult = await c.env.DB.prepare(`
     SELECT
@@ -820,9 +843,26 @@ app.get("/security-report", async (c) => {
       MAX(l.country) AS country,
       MAX(l.colo) AS colo,
       COUNT(*) AS total_requests,
-      SUM(CASE WHEN l.allowed = 0 THEN 1 ELSE 0 END) AS blocked_requests,
-      SUM(CASE WHEN l.tenant_id = ? THEN 1 ELSE 0 END) AS tenant_requests,
-      SUM(CASE WHEN l.tenant_id = ? AND l.allowed = 0 THEN 1 ELSE 0 END) AS tenant_blocked_requests,
+      SUM(
+        CASE
+          WHEN l.allowed = 0 THEN 1
+          ELSE 0
+        END
+      ) AS blocked_requests,
+      SUM(
+        CASE
+          WHEN l.tenant_id = ? THEN 1
+          ELSE 0
+        END
+      ) AS tenant_requests,
+      SUM(
+        CASE
+          WHEN l.tenant_id = ?
+            AND l.allowed = 0
+          THEN 1
+          ELSE 0
+        END
+      ) AS tenant_blocked_requests,
       COUNT(DISTINCT l.tenant_id) AS tenant_count,
       MAX(l.created_at) AS last_seen
     FROM security_logs l
@@ -830,12 +870,17 @@ app.get("/security-report", async (c) => {
       ON ti.ip_address = l.ip_address
     WHERE l.created_at >= datetime('now', '-24 hours')
     GROUP BY l.ip_address
-    ORDER BY tenant_blocked_requests DESC,
+    ORDER BY
+      tenant_blocked_requests DESC,
       blocked_requests DESC,
       total_requests DESC
     LIMIT 10
   `)
-    .bind(tenantId, tenantId, tenantId)
+    .bind(
+      tenantId,
+      tenantId,
+      tenantId
+    )
     .all<TopAbusiveIpRow>();
 
   const topAbusiveIps = (
@@ -844,13 +889,21 @@ app.get("/security-report", async (c) => {
     ipAddress: row.ip_address,
     country: row.country,
     colo: row.colo,
-    totalRequests: Number(row.total_requests || 0),
-    blockedRequests: Number(row.blocked_requests || 0),
-    tenantRequests: Number(row.tenant_requests || 0),
+    totalRequests: Number(
+      row.total_requests || 0
+    ),
+    blockedRequests: Number(
+      row.blocked_requests || 0
+    ),
+    tenantRequests: Number(
+      row.tenant_requests || 0
+    ),
     tenantBlockedRequests: Number(
       row.tenant_blocked_requests || 0
     ),
-    tenantCount: Number(row.tenant_count || 0),
+    tenantCount: Number(
+      row.tenant_count || 0
+    ),
     lastSeen: row.last_seen,
   }));
 
@@ -862,8 +915,31 @@ app.get("/security-report", async (c) => {
       topIpResult.results ?? []
     );
 
+  /*
+    FIX:
+    Convert AI text score
+    -> numeric score
+  */
+
+  const scoreMap: Record<string, number> = {
+    Critical: 95,
+    High: 85,
+    Medium: 55,
+    Low: 20,
+  };
+
+  const numericAbuseScore =
+    typeof intelligence.abuseScore === "number"
+      ? intelligence.abuseScore
+      : scoreMap[
+          String(
+            intelligence.abuseScore
+          ).trim()
+        ] || 0;
+
   return c.json({
     tenantId,
+
     recentLogs: recentLogs.map((log) => ({
       id: log.id,
       tenantId: log.tenant_id,
@@ -874,15 +950,28 @@ app.get("/security-report", async (c) => {
       colo: log.colo,
       userAgent: log.user_agent,
       allowed: Boolean(log.allowed),
-      remaining: Number(log.remaining || 0),
-      retryAfter: Number(log.retry_after || 0),
+      remaining: Number(
+        log.remaining || 0
+      ),
+      retryAfter: Number(
+        log.retry_after || 0
+      ),
       reason: log.reason,
       createdAt: log.created_at,
     })),
+
     topAbusiveIps,
+
     aiSummary: intelligence.aiSummary,
-    abuseScore: intelligence.abuseScore,
-    recommendation: intelligence.recommendation,
+
+    /*
+      FIXED:
+      now always numeric
+    */
+    abuseScore: numericAbuseScore,
+
+    recommendation:
+      intelligence.recommendation,
   });
 });
 
@@ -1020,14 +1109,21 @@ app.post("/reset", async (c) => {
   );
 
   return c.json({
+    ...result,
     success: true,
     tenantId,
     route,
-    ...result,
   });
 });
 
 app.get("/run-report", async (c) => {
+  const apiKey = c.req.header("x-api-key");
+  if (!apiKey) return c.json({ error: "API key missing" }, 401);
+  const caller = await getUserByApiKey(c.env, apiKey);
+  if (!caller || caller.status !== "active" || caller.role !== "super_admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const result = await c.env.DB.prepare(`
     SELECT
       api_key,
@@ -1039,38 +1135,31 @@ app.get("/run-report", async (c) => {
   `).first();
 
   if (!result) {
-    return c.json({
-      message: "No usage data found."
-    });
+    return c.json({ message: "No usage data found." });
   }
 
-  const totalRequests = Number(
-    result.total_requests || 0
-  );
-
-  const blockedRequests = Number(
-    result.blocked_requests || 0
-  );
-
+  const totalRequests = Number(result.total_requests || 0);
+  const blockedRequests = Number(result.blocked_requests || 0);
   const abuseScore =
     totalRequests > 0
-      ? (
-          (blockedRequests / totalRequests) * 100
-        ).toFixed(2)
+      ? ((blockedRequests / totalRequests) * 100).toFixed(2)
       : "0";
-
-  const recommendation =
-    Number(abuseScore) > 70
-      ? "Temporary block recommended"
-      : "Monitor traffic";
+  const rawKey = String(result.api_key);
+  const maskedKey =
+    rawKey.length <= 8
+      ? "••••••••"
+      : rawKey.slice(0, 12) + "••••" + rawKey.slice(-4);
 
   return c.json({
     report: "Daily Abuse Report",
-    topApiKey: result.api_key,
+    topApiKey: maskedKey,
     totalRequests,
     blockedRequests,
     abuseScore: `${abuseScore}%`,
-    recommendation,
+    recommendation:
+      Number(abuseScore) > 70
+        ? "Temporary block recommended"
+        : "Monitor traffic",
   });
 });
 
@@ -1206,23 +1295,19 @@ export default {
           ).toFixed(2)
         : "0";
 
+    const rawKey = String(result.api_key);
+    const maskedKey =
+      rawKey.length <= 8
+        ? "••••••••"
+        : rawKey.slice(0, 12) + "••••" + rawKey.slice(-4);
+
     console.log(`
 === Daily Abuse Report ===
-
-Top API Key: ${result.api_key}
-
-Total Requests: ${totalRequests}
-
-Blocked Requests: ${blockedRequests}
-
-Abuse Score: ${abuseScore}%
-
-Recommendation:
-${
-  Number(abuseScore) > 70
-    ? "Temporary block recommended"
-    : "Monitor traffic"
-}
+Top API Key:        ${maskedKey}
+Total Requests:     ${totalRequests}
+Blocked Requests:   ${blockedRequests}
+Abuse Score:        ${abuseScore}%
+Recommendation:     ${Number(abuseScore) > 70 ? "Temporary block recommended" : "Monitor traffic"}
 ==========================
     `);
   },

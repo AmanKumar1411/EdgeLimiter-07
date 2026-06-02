@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { Trash2, CheckCircle2 } from "lucide-react";
-import { resetCounter, type Session } from "../lib/api";
-import { Spinner } from "../components/Loading";
-import { Field, ErrorAlert } from "../pages/RegisterPage";
-import { logActivity } from "../lib/activity";
+import { resetCounter, type Session } from "@/lib/api";
+import { Spinner } from "@/components/Loading";
+import { Field, ErrorAlert } from "@/pages/RegisterPage";
+import { logActivity } from "@/lib/activity";
 
 export function OperationsSection({
   session,
   onTenantChange,
+  viewedTenantId,
 }: {
   session: Session;
   onTenantChange: (id: string) => void;
+  viewedTenantId?: string;
 }) {
-  const [tenantId, setTenantId] = useState(session.tenantId);
+  const [tenantId, setTenantId] = useState(viewedTenantId ?? session.tenantId);
   const [route, setRoute] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,11 +26,12 @@ export function OperationsSection({
     setSuccess(null);
     setLoading(true);
     try {
-      const response = await resetCounter(
-        { tenantId: tenantId.trim(), route: route.trim() },
+      const { data } = await resetCounter(
+        tenantId.trim(),
+        route.trim(),
         session.apiKey,
       );
-      setSuccess(response.message || "Counter reset successfully.");
+      setSuccess(data.message || "Counter reset successfully.");
       onTenantChange(tenantId.trim());
       logActivity({
         title: "Counter reset",

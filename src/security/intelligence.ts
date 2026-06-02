@@ -39,22 +39,15 @@ export async function generateAttackIntelligence(
         {
           role: "system",
           content: `
-You are a cybersecurity analyst.
+You are a cybersecurity analyst. Return a JSON object with these exact fields:
+{
+  "summary": "2-3 sentence description of the attack pattern, mentioning IP, country, route, and behavior",
+  "abuseScore": "Low | Medium | High | Critical",
+  "recommendation": "one actionable sentence"
+}
 
-Return STRICT JSON with:
-- summary (must mention IP, country, route, and behavior)
-- abuseScore (Low, Medium, High, Critical)
-- recommendation
-
-Focus on:
-- Which IP is attacking
-- From which country
-- Which route is targeted
-- How many blocked requests
-- Pattern (burst / repeated / cross-tenant)
-
-Do NOT be generic. Be specific.
-          `,
+Return only valid JSON. No markdown, no code fences, no extra text.
+`,
         },
         {
           role: "user",
@@ -188,48 +181,154 @@ function getRecommendation(
   }
 }
 
-function getAiText(result: unknown) {
+function getAiText(result: unknown): string {
+  /*
+    Case 1:
+    Direct string
+  */
   if (typeof result === "string") {
-    return result;
+    return result.trim();
   }
 
+  /*
+    Case 2:
+    Standard Workers AI response
+  */
   if (
     result &&
-    typeof result === "object" &&
-    "response" in result &&
-    typeof result.response === "string"
+    typeof result === "object"
   ) {
-    return result.response;
+    const obj = result as Record<string, unknown>;
+
+    /*
+      response: "..."
+    */
+    if (
+      typeof obj.response === "string"
+    ) {
+      return obj.response.trim();
+    }
+
+    /*
+      result.response
+    */
+    if (
+      obj.result &&
+      typeof obj.result === "object"
+    ) {
+      const nested =
+        obj.result as Record<string, unknown>;
+
+      if (
+        typeof nested.response === "string"
+      ) {
+        return nested.response.trim();
+      }
+    }
+
+    /*
+      choices[0].message.content
+    */
+    if (
+      Array.isArray(obj.choices) &&
+      obj.choices.length > 0
+    ) {
+      const first =
+        obj.choices[0] as Record<string, unknown>;
+
+      if (
+        first.message &&
+        typeof first.message === "object"
+      ) {
+        const message =
+          first.message as Record<string, unknown>;
+
+        if (
+          typeof message.content === "string"
+        ) {
+          return message.content.trim();
+        }
+      }
+    }
   }
+
+  /*
+    Final fallback
+  */
+  console.error(
+    "Unable to extract AI response:",
+    result
+  );
 
   return "";
 }
 
-function parseAiJson(text: string): {
+function parseAiJson(raw: string): {
   summary?: string;
   abuseScore?: string;
   recommendation?: string;
 } {
   try {
-    const parsed = JSON.parse(text) as AiJsonResponse;
+    const cleaned = raw
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const parsed = JSON.parse(cleaned);
+
+    let summaryText: string | undefined;
+
+    /*
+      CASE 1:
+      summary is already a string
+    */
+    if (typeof parsed.summary === "string") {
+      summaryText = parsed.summary.trim();
+    }
+
+    /*
+      CASE 2:
+      summary is an object
+      {
+        ip,
+        country,
+        route,
+        behavior
+      }
+    */
+    else if (
+      parsed.summary &&
+      typeof parsed.summary === "object"
+    ) {
+      const s = parsed.summary;
+
+      summaryText =
+        `IP ${s.ip || "Unknown"} from ${s.country || "Unknown"} ` +
+        `is repeatedly targeting route "${s.route || "Unknown"}". ` +
+        `${s.behavior || "Suspicious repeated abuse detected."}`;
+    }
+
     return {
-      summary:
-        typeof parsed.summary === "string"
-          ? parsed.summary
-          : undefined,
+      summary: summaryText,
+
       abuseScore:
         typeof parsed.abuseScore === "string"
-          ? parsed.abuseScore
+          ? parsed.abuseScore.trim()
           : undefined,
+
       recommendation:
         typeof parsed.recommendation === "string"
-          ? parsed.recommendation
+          ? parsed.recommendation.trim()
           : undefined,
     };
-  } catch {
-    return {
-      summary: text || undefined,
-    };
+  } catch (error) {
+    console.error(
+      "Failed to parse AI JSON response:",
+      raw,
+      error
+    );
+
+    return {};
   }
 }
 

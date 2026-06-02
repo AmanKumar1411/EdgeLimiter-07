@@ -1,6 +1,21 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Activity, Settings, BarChart3, Wrench, ScrollText, Shield, UserPlus, ShieldAlert, Menu, X } from "lucide-react";
+import {
+  LogOut,
+  Activity,
+  Settings,
+  BarChart3,
+  Wrench,
+  ScrollText,
+  Shield,
+  UserPlus,
+  ShieldAlert,
+  Menu,
+  X,
+  LayoutDashboard,
+  Users,
+  KeyRound,
+} from "lucide-react";
 import { sessionStore, type Session } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
@@ -15,15 +30,18 @@ export const CLIENT_NAV: NavItem[] = [
   { id: "live", label: "Live Control", icon: Activity },
   { id: "policies", label: "Policies", icon: Settings },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "security", label: "Security", icon: ShieldAlert },
   { id: "operations", label: "Operations", icon: Wrench },
-  { id: "security", label: "Security" , icon: Shield },
   { id: "audit", label: "Audit", icon: ScrollText },
 ];
 
 export const ADMIN_NAV: NavItem[] = [
-  ...CLIENT_NAV,
-  { id: "register", label: "Register User", icon: UserPlus },
-  { id: "security", label: "Security Intel", icon: ShieldAlert },
+  { id: "overview", label: "System Overview", icon: LayoutDashboard },
+  { id: "tenants", label: "Tenants", icon: Users },
+  { id: "global-security", label: "Global Security", icon: ShieldAlert },
+  { id: "top-keys", label: "Top API Keys", icon: KeyRound },
+  { id: "register", label: "Register Tenant", icon: UserPlus },
+  { id: "audit", label: "Audit", icon: ScrollText },
 ];
 
 interface DashboardShellProps {
@@ -146,7 +164,9 @@ export function DashboardShell({
               <div className="text-xs text-muted-foreground uppercase tracking-wide">
                 {portalLabel}
               </div>
-              <h1 className="text-lg font-semibold truncate">{activeItem?.label}</h1>
+              <h1 className="text-lg font-semibold truncate">
+                {activeItem?.label}
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -154,7 +174,10 @@ export function DashboardShell({
               <span className="text-muted-foreground">Tenant:</span>
               <code className="font-mono text-primary">{session.tenantId}</code>
             </div>
-            <button onClick={handleLogout} className="btn-outline !py-2 !px-3 text-sm">
+            <button
+              onClick={handleLogout}
+              className="btn-outline !py-2 !px-3 text-sm"
+            >
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">Logout</span>
             </button>

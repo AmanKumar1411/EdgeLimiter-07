@@ -6,7 +6,7 @@ import {
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
-import { hashApiKey } from "../src/utils/apiKeys";
+import { hashApiKey } from "../src/keys/keys";
 import { call, check, flushQueue, json, makeEnv, register, savePolicy, unique } from "./helpers";
 
 /*
@@ -171,7 +171,7 @@ describe("upgrading the production-shaped database", () => {
       { id: "old", timestamp: new Date(), attempts: 1, body: { apiKey: tenantlessKey2, blocked: 1 } },
     ]);
     const ctx = createExecutionContext();
-    await worker.queue(batch, e, ctx);
+    await worker.queue(batch, e);
     const result = await getQueueResult(batch, ctx);
     expect(result.explicitAcks).toEqual(["old"]);
   });

@@ -5,7 +5,7 @@ import {
 } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import type { Env } from "../src/types/env";
+import type { Env } from "../src/shared/env";
 import { check, flushQueue, makeEnv, register, savePolicy, unique } from "./helpers";
 
 async function runBatch(
@@ -24,7 +24,7 @@ async function runBatch(
   );
   inspect?.(batch);
   const ctx = createExecutionContext();
-  await worker.queue(batch, env, ctx);
+  await worker.queue(batch, env);
   return getQueueResult(batch, ctx);
 }
 

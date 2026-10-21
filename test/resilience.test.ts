@@ -1,6 +1,6 @@
 import { env as realEnv } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
-import type { Env } from "../src/types/env";
+import type { Env } from "../src/shared/env";
 import {
   call,
   check,
@@ -20,7 +20,7 @@ const failingKv = {
 const failingDo = {
   idFromName: (name: string) => realEnv.RATE_LIMITER.idFromName(name),
   get: () => ({
-    fetch: async () => {
+    check: async () => {
       throw new Error("Durable Object unavailable");
     },
   }),
@@ -186,7 +186,7 @@ describe("Workers AI security intelligence (mocked)", () => {
     }
   });
 
-  it("uses AI output, keeps rule severity as a floor, and caches the result", async () => {
+  it("answers from rules immediately, refreshes with AI in the background, then serves the cached AI result", async () => {
     const { env, tenantId, apiKey } = await withBlockedTraffic();
     const run = vi.fn(async () => ({
       response: JSON.stringify({
@@ -197,17 +197,20 @@ describe("Workers AI security intelligence (mocked)", () => {
     }));
     const aiEnv = { ...env, AI: { run } as unknown as Ai };
 
+    // Workers AI is not in the request path: the first report uses rules,
+    // and the AI runs after the response (call() waits for waitUntil work).
     const first = await json(await report(aiEnv, tenantId, apiKey));
-    expect(first).toMatchObject({
+    expect(first).toMatchObject({ intelligenceSource: "rules", abuseScore: 95 });
+    expect(run).toHaveBeenCalledTimes(1);
+
+    const second = await json(await report(aiEnv, tenantId, apiKey));
+    expect(second).toMatchObject({
       intelligenceSource: "ai",
       aiSummary: "Single IP hammering /login.",
       recommendation: "Block it.",
-      abuseScore: 95,
+      abuseScore: 95, // rule-based Critical is a floor under the AI's "Low"
     });
-    expect(run).toHaveBeenCalledTimes(1);
-
-    // Same logs → cached, no second (billed) AI call.
-    await report(aiEnv, tenantId, apiKey);
+    expect(run).toHaveBeenCalledTimes(1); // served from cache
     // New logs within the staleness window → still cached.
     await check(env, apiKey, tenantId, "/login");
     await flushQueue(env);

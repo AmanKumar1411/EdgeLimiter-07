@@ -25,7 +25,7 @@ export const WINDOW_UNITS = [
   { value: 86400, singular: "day", plural: "days" },
 ] as const;
 
-// The server's limits (see src/utils/validation.ts in the Worker).
+// The server's limits (see src/policies/policies.ts in the Worker).
 export const MAX_SLIDING_WINDOW_LIMIT = 10_000;
 export const MAX_WINDOW_SECONDS = 30 * 86400;
 

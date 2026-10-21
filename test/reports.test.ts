@@ -1,8 +1,4 @@
-import {
-  createExecutionContext,
-  createScheduledController,
-  waitOnExecutionContext,
-} from "cloudflare:test";
+import { createScheduledController } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import {
@@ -135,14 +131,10 @@ describe("scheduled retention", () => {
         .bind(tenantId).first<{ n: number }>())?.n;
 
     // Unset → nothing deleted.
-    let ctx = createExecutionContext();
-    await worker.scheduled(createScheduledController(), env, ctx);
-    await waitOnExecutionContext(ctx);
+    await worker.scheduled(createScheduledController(), env);
     expect(await count()).toBe(2);
 
-    ctx = createExecutionContext();
-    await worker.scheduled(createScheduledController(), { ...env, SECURITY_LOG_RETENTION_DAYS: "30" }, ctx);
-    await waitOnExecutionContext(ctx);
+    await worker.scheduled(createScheduledController(), { ...env, SECURITY_LOG_RETENTION_DAYS: "30" });
     expect(await count()).toBe(1);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hashApiKey } from "../src/utils/apiKeys";
+import { hashApiKey } from "../src/keys/keys";
 import {
   call,
   check,

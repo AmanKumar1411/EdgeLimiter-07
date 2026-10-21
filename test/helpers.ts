@@ -6,7 +6,7 @@ import {
 } from "cloudflare:test";
 import { env as baseEnv } from "cloudflare:workers";
 import worker from "../src/index";
-import type { Env } from "../src/types/env";
+import type { Env } from "../src/shared/env";
 
 export type TestEnv = Env & { sent: unknown[] };
 
@@ -157,6 +157,6 @@ export async function flushQueue(env: TestEnv) {
 
   const batch = createMessageBatch("rate-limit-logs", messages);
   const ctx = createExecutionContext();
-  await worker.queue(batch, env, ctx);
+  await worker.queue(batch, env);
   return getQueueResult(batch, ctx);
 }

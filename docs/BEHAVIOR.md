@@ -69,25 +69,45 @@ UI flows are covered by `dashboard/e2e/flows.spec.ts`.
 
 ## UI pages
 
+The dashboard calls a tenant a **project**. Every page has its own URL, so
+links (e.g. from an overview number) open a filtered view.
+
 | Path | Who | Contents |
 |---|---|---|
-| `/` | anyone | Landing page, links to register and login |
-| `/register` | anyone | Create a tenant and get the API key once |
-| `/login` | client | Tenant ID + API key → `/dashboard` |
-| `/admin-login` | super_admin | Tenant ID + admin key → `/admin`; client keys are refused |
-| `/dashboard` | client | Sections: Live Control, Policies, Analytics, Security, Operations, API Keys, Audit |
-| `/admin` | super_admin | Sections: System Overview, Tenants (drill-down into any tenant's sections), Global Security, Top API Keys, Register Tenant, Audit |
-| `*` | anyone | Not found page |
+| `/` | anyone | What EdgeLimiter does, example `/check` exchange, links to create a project or sign in |
+| `/register` | anyone | Create a project: email + project ID → API key shown once → continue to setup (signed in) |
+| `/login` | any role | Project ID + API key → `/dashboard` (super admins → `/dashboard` too) |
+| `/admin-login` | super_admin | Same form; client keys are refused → `/admin` |
+| `/dashboard` | client | Overview: requests, blocked, block rate (each links to Activity), recent traffic chart, most limited routes, top keys, recent alerts |
+| `/dashboard/setup` | client | Get started: project ✓ → API key ✓ → starter limit, copyable curl/JS snippet, browser test, live request feed |
+| `/dashboard/limits` | client | Limits table (search, pagination); plain-words form with preview; edit, reset counter, delete (confirmed) |
+| `/dashboard/playground` | client | Test request: send `/check` with the session key (optional identifier), see status, remaining, limit, retry, reset; snippet |
+| `/dashboard/activity` | client | Threat summary, request log with outcome/route/key/search filters in the URL, top IPs (24h) |
+| `/dashboard/keys` | client | Keys table; create (shown once); revoke (confirmed; revoking the session key signs out) |
+| `/dashboard/audit` | client | Audit table with event filter and search |
+| `/admin` | super_admin | Platform overview: system totals, top keys across tenants |
+| `/admin/tenants` | super_admin | Tenants table, open any tenant by ID |
+| `/admin/users` | super_admin | Add a user to an existing or new tenant (key shown once) |
+| `/admin/t/:tenantId/…` | super_admin | The tenant pages above for any tenant (no Test request for other tenants: `/check` needs their own key) |
+| `*` | anyone | Not found |
 
-A `401` for the session's own key clears the session and returns to the login page.
+A project switcher (admins: any tenant or "All tenants"), breadcrumbs, API
+status and a light/dark/system theme toggle are on every page. A `401` for
+the session's own key clears the session and returns to the login page.
+
+Previous layout → current: Live Control → Test request · Policies →
+Limits · Operations (reset) → Limits row action · Analytics + Security →
+Overview + Activity · Global Security / Top API Keys → Platform overview ·
+Register Tenant → Users · Tenants drill-down → `/admin/t/:tenantId`.
 
 ## User flows (e2e)
 
-1. **Sign up**: register → copy key → log in → empty Policies page.
-2. **Create a limit**: Policies → route, limit, window, algorithm → saved and listed.
-3. **Test it**: Live Control → send checks → allowed, then blocked; limit and reset shown; an `identifier` gets its own counter.
-4. **Observe**: Analytics totals update after queue processing (≤ 5 s); Security shows rule-based summary and top IPs; Audit lists policy, block, and key events.
-5. **Manage keys**: API Keys → create (shown once) → revoke → status revoked; revoking the session's own key signs the user out.
-6. **Remove a limit**: Policies → delete (confirm) → empty state; `/check` on that route → 404.
-7. **Admin**: admin login (client key refused) → overview → Tenants → drill into a tenant (analytics, keys, …) → add a user to an existing tenant.
-8. **Mobile**: every section reachable via the drawer at 390 px without horizontal scrolling.
+1. **Onboarding**: create project → key shown once → setup → starter limit → snippet (key masked on screen, real key copied) → browser test → request appears live.
+2. **Create a limit**: Limits → New limit → route, "Allow N requests every M unit", algorithm → preview sentence → saved and listed.
+3. **Test it**: Test request → allowed, then blocked (HTTP 429); limit header shown; an `identifier` gets its own counter.
+4. **Observe**: Overview totals update after queue processing (≤ 5 s); clicking Blocked opens Activity filtered to rate-limited requests; Audit lists limit, block and key events.
+5. **Manage keys**: create (shown once) → revoke → Revoked; revoking the session's own key signs the user out.
+6. **Remove a limit**: Limits → Delete (confirm) → gone; `/check` on that route → 404.
+7. **Admin**: admin sign-in (client key refused) → platform overview → Tenants → tenant pages (no Test request) → back to All tenants → add a user to a tenant.
+8. **Theme**: system → light → dark, persisted across reloads.
+9. **Mobile (375 px)**: every page reachable via the drawer, no horizontal scrolling.

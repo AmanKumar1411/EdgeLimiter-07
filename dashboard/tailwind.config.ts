@@ -1,74 +1,37 @@
 import type { Config } from "tailwindcss";
 
-const config: Config = {
-  darkMode: ["class"],
+// Colours are HSL channel triplets in CSS variables (src/index.css), so
+// Tailwind opacity modifiers like `bg-danger/10` keep working.
+const token = (name: string) => `hsl(var(--${name}) / <alpha-value>)`;
+
+export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
       colors: {
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))",
-        },
-        warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))",
-        },
-        info: {
-          DEFAULT: "hsl(var(--info))",
-          foreground: "hsl(var(--info-foreground))",
-        },
+        background: token("background"),
+        foreground: token("foreground"),
+        card: token("card"),
+        muted: { DEFAULT: token("muted"), foreground: token("muted-foreground") },
+        border: token("border"),
+        input: token("input"),
+        ring: token("ring"),
+        primary: { DEFAULT: token("primary"), foreground: token("primary-foreground") },
+        accent: { DEFAULT: token("accent"), foreground: token("accent-foreground") },
+        success: token("success"),
+        warning: token("warning"),
+        danger: token("danger"),
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-      },
-      boxShadow: {
-        "glow-primary": "var(--glow-primary)",
-        "glow-secondary": "var(--glow-secondary)",
-        "glow-danger": "var(--glow-danger)",
-      },
-      backgroundImage: {
-        "gradient-primary": "var(--gradient-primary)",
-        "gradient-glow": "var(--gradient-glow)",
-        "gradient-card": "var(--gradient-card)",
+        DEFAULT: "var(--radius)",
+        md: "var(--radius)",
+        lg: "calc(var(--radius) + 2px)",
       },
     },
   },
-};
-
-export default config;
+} satisfies Config;

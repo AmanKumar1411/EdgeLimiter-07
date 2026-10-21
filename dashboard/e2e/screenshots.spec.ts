@@ -71,11 +71,22 @@ async function shoot(page: Page, name: string) {
   await page.screenshot({ path: `${dir}/${name}.jpg`, fullPage: true, type: "jpeg", quality: 80 });
 }
 
-test("capture all pages", async ({ page, browser }) => {
-  test.setTimeout(180_000);
-  const { clientKey, adminKey } = await seed();
+async function captureNav(page: Page, prefix: string, suffix: string) {
+  const links = page.getByRole("navigation", { name: "Main" }).getByRole("link");
+  const hrefs = await links.evaluateAll((els) => els.map((el) => (el as HTMLAnchorElement).pathname));
+  for (const href of hrefs) {
+    await page.goto(href);
+    const name = (await page.getByRole("heading", { level: 1 }).textContent()) ?? href;
+    await shoot(page, `${prefix}-${name.toLowerCase().replace(/\s+/g, "-")}${suffix}`);
+  }
+}
 
-  for (const scheme of (process.env.SCREENSHOT_SCHEMES ?? "dark").split(",")) {
+test("capture all pages", async ({ page, browser }) => {
+  test.setTimeout(240_000);
+  const { clientKey, adminKey } = await seed();
+  const schemes = (process.env.SCREENSHOT_SCHEMES ?? "dark").split(",");
+
+  for (const scheme of schemes) {
     await page.emulateMedia({ colorScheme: scheme as "light" | "dark" });
     const suffix = process.env.SCREENSHOT_SCHEMES ? `-${scheme}` : "";
 
@@ -85,22 +96,24 @@ test("capture all pages", async ({ page, browser }) => {
     }
 
     await signIn(page, "/dashboard", tenant, clientKey);
-    const sections = await page.getByRole("navigation").getByRole("button").allTextContents();
-    for (const label of sections.map((s) => s.trim()).filter(Boolean)) {
-      await page.getByRole("navigation").getByRole("button", { name: label, exact: true }).click();
-      await shoot(page, `client-${label.toLowerCase().replace(/\s+/g, "-")}${suffix}`);
-    }
+    await captureNav(page, "client", suffix);
 
     await signIn(page, "/admin", `ops-${run}`, adminKey);
-    const adminSections = await page.getByRole("navigation").getByRole("button").allTextContents();
-    for (const label of adminSections.map((s) => s.trim()).filter(Boolean)) {
-      await page.getByRole("navigation").getByRole("button", { name: label, exact: true }).click();
-      await shoot(page, `admin-${label.toLowerCase().replace(/\s+/g, "-")}${suffix}`);
-    }
+    await captureNav(page, "admin", suffix);
+    await page.goto(`/admin/t/${tenant}`);
+    await shoot(page, `admin-tenant-overview${suffix}`);
   }
 
   const mobile = await browser.newPage({ viewport: { width: 375, height: 812 } });
-  await signIn(mobile, "/dashboard", tenant, clientKey);
-  await shoot(mobile, "mobile-dashboard");
+  for (const scheme of schemes) {
+    await mobile.emulateMedia({ colorScheme: scheme as "light" | "dark" });
+    const suffix = process.env.SCREENSHOT_SCHEMES ? `-${scheme}` : "";
+    await signIn(mobile, "/dashboard", tenant, clientKey);
+    await shoot(mobile, `mobile-overview${suffix}`);
+    await mobile.goto("/dashboard/limits");
+    await shoot(mobile, `mobile-limits${suffix}`);
+    await mobile.getByRole("button", { name: "Open menu" }).click();
+    await shoot(mobile, `mobile-menu${suffix}`);
+  }
   await mobile.close();
 });

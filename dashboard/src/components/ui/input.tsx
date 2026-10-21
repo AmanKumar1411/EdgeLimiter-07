@@ -1,22 +1,48 @@
-import * as React from "react";
+import {
+  cloneElement,
+  useId,
+  type InputHTMLAttributes,
+  type ReactElement,
+  type SelectHTMLAttributes,
+} from "react";
+import { cn } from "@/lib/format";
 
-import { cn } from "@/lib/utils";
+const control =
+  "h-9 w-full rounded border border-input bg-background px-3 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60";
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
-    return (
-      <input
-        type={type}
-        className={cn(
-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-          className,
-        )}
-        ref={ref}
-        {...props}
-      />
-    );
-  },
-);
-Input.displayName = "Input";
+export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={cn(control, className)} {...props} />;
+}
 
-export { Input };
+export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={cn(control, "pr-8", className)} {...props} />;
+}
+
+/** Label + control + optional hint, wired together for screen readers. */
+export function Field({
+  label,
+  hint,
+  children,
+  className,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactElement<{ id?: string; "aria-describedby"?: string }>;
+  className?: string;
+}) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <label htmlFor={id} className="block text-sm font-medium">
+        {label}
+      </label>
+      {cloneElement(children, { id, "aria-describedby": hint ? hintId : undefined })}
+      {hint && (
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}

@@ -42,7 +42,19 @@ export interface ApiResponse<T> {
     remaining?: string | null;
     reset?: string | null;
     retryAfter?: string | null;
+    degraded?: string | null;
   };
+}
+
+/*
+ A 401 for the session's own key means it was revoked (or deleted):
+ drop the session and send the user back to the right login page.
+*/
+function handleSessionRejected(apiKey: string | undefined) {
+  const session = sessionStore.get();
+  if (!session || !apiKey || session.apiKey !== apiKey) return;
+  sessionStore.clear();
+  window.location.assign(session.role === "super_admin" ? "/admin-login" : "/login");
 }
 
 export async function apiRequest<T = unknown>(path: string, opts: RequestOpts = {}): Promise<ApiResponse<T>> {
@@ -60,8 +72,8 @@ export async function apiRequest<T = unknown>(path: string, opts: RequestOpts = 
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
-  } catch (e) {
-    throw new Error("Failed to connect. Please check your connection.");
+  } catch (cause) {
+    throw new Error("Failed to connect. Please check your connection.", { cause });
   }
 
   let data: unknown = null;
@@ -73,6 +85,8 @@ export async function apiRequest<T = unknown>(path: string, opts: RequestOpts = 
       data = text;
     }
   }
+
+  if (res.status === 401) handleSessionRejected(apiKey);
 
   // For 429, we still return the body (it's a valid "blocked" response for /check)
   if (!res.ok && res.status !== 429) {
@@ -91,6 +105,7 @@ export async function apiRequest<T = unknown>(path: string, opts: RequestOpts = 
       remaining: res.headers.get("X-RateLimit-Remaining"),
       reset: res.headers.get("X-RateLimit-Reset"),
       retryAfter: res.headers.get("Retry-After"),
+      degraded: res.headers.get("X-EdgeLimiter-Degraded"),
     },
   };
 }
@@ -108,8 +123,9 @@ export interface RegisterRes {
   role: string;
   apiKey: string;
 }
-export const registerUser = (body: RegisterReq) =>
-  apiRequest<RegisterRes>("/register", { method: "POST", body });
+/** Pass a super_admin `apiKey` to add a user to an existing tenant. */
+export const registerUser = (body: RegisterReq, apiKey?: string) =>
+  apiRequest<RegisterRes>("/register", { method: "POST", body, apiKey });
 
 export interface CheckRes {
   tenant?: string;
@@ -118,9 +134,15 @@ export interface CheckRes {
   remaining?: number;
   retryAfter?: number;
   algorithm?: string;
+  degraded?: string;
 }
-export const checkRate = (tenantId: string, route: string, apiKey: string) =>
-  apiRequest<CheckRes>("/check", { method: "POST", body: { tenantId, route }, apiKey });
+/** `identifier` (optional) rate-limits each end user separately under the route's policy. */
+export const checkRate = (tenantId: string, route: string, apiKey: string, identifier?: string) =>
+  apiRequest<CheckRes>("/check", {
+    method: "POST",
+    body: identifier ? { tenantId, route, identifier } : { tenantId, route },
+    apiKey,
+  });
 
 export interface ConfigReq {
   tenantId: string;
@@ -141,9 +163,14 @@ export interface MetricsRes {
   blockedRequests: number;
   blockRate: string;
 }
-export const getMetrics = () => apiRequest<MetricsRes>("/metrics");
-export const getClientMetrics = (apiKey: string) =>
-  apiRequest<MetricsRes>("/client/metrics", { apiKey });
+export const getMetrics = (apiKey: string) =>
+  apiRequest<MetricsRes>("/metrics", { apiKey });
+/** `tenantId` is honoured for super_admin only; clients always get their own tenant. */
+export const getClientMetrics = (apiKey: string, tenantId?: string) =>
+  apiRequest<MetricsRes>("/client/metrics", {
+    apiKey,
+    query: tenantId ? { tenantId } : undefined,
+  });
 
 export interface TopKey {
   apiKey: string;
@@ -152,7 +179,12 @@ export interface TopKey {
   blockedRequests: number;
   abuseScore: number;
 }
-export const getTopKeys = () => apiRequest<TopKey[]>("/top-keys");
+/** `tenantId` is honoured for super_admin only; clients always get their own tenant. */
+export const getTopKeys = (apiKey: string, tenantId?: string) =>
+  apiRequest<TopKey[]>("/top-keys", {
+    apiKey,
+    query: tenantId ? { tenantId } : undefined,
+  });
 
 export interface SecurityLog {
   id: string;
@@ -178,6 +210,8 @@ export interface SecurityReport {
   aiSummary: string;
   abuseScore: number;
   recommendation: string;
+  intelligenceSource?: "ai" | "rules";
+  generatedAt?: string;
 }
 export const getSecurityReport = (tenantId: string, apiKey: string) =>
   apiRequest<SecurityReport>("/security-report", { apiKey, query: { tenantId } });
@@ -196,3 +230,67 @@ export interface WhoAmIRes {
 }
 export const whoAmI = (apiKey: string) =>
   apiRequest<WhoAmIRes>("/whoami", { apiKey });
+
+export interface Policy {
+  tenantId: string;
+  route: string;
+  limit: number;
+  window: number;
+  algorithm: string;
+}
+export const listPolicies = (tenantId: string, apiKey: string) =>
+  apiRequest<{ tenantId: string; policies: Policy[]; cursor: string | null }>("/config", {
+    apiKey,
+    query: { tenantId },
+  });
+export const deletePolicy = (tenantId: string, route: string, apiKey: string) =>
+  apiRequest<{ success: boolean; message: string }>("/config", {
+    method: "DELETE",
+    apiKey,
+    query: { tenantId, route },
+  });
+
+export interface ApiKeyInfo {
+  id: number;
+  hint: string;
+  status: "active" | "revoked";
+  email: string;
+  createdAt: string;
+  revokedAt: string | null;
+  current: boolean;
+}
+/** `tenantId` is honoured for super_admin only. */
+export const listKeys = (apiKey: string, tenantId?: string) =>
+  apiRequest<{ keys: ApiKeyInfo[] }>("/keys", {
+    apiKey,
+    query: tenantId ? { tenantId } : undefined,
+  });
+export const createKey = (apiKey: string) =>
+  apiRequest<{ success: boolean; id: number; apiKey: string; hint: string }>("/keys", {
+    method: "POST",
+    apiKey,
+  });
+export const revokeKey = (id: number, apiKey: string) =>
+  apiRequest<{ success: boolean; id: number; status: string; current: boolean }>(
+    `/keys/${id}/revoke`,
+    { method: "POST", apiKey },
+  );
+
+export interface AuditLog {
+  id: number;
+  tenant_id: string;
+  api_key_hint: string | null;
+  route: string | null;
+  actor: string;
+  action_type: string;
+  message: string;
+  severity: "Low" | "Medium" | "High" | "Critical";
+  created_at: string;
+}
+export const getAuditReport = (tenantId: string, apiKey: string) =>
+  apiRequest<{ tenantId: string; auditLogs: AuditLog[] }>("/audit-report", {
+    apiKey,
+    query: { tenantId },
+  });
+
+export const getHealth = () => apiRequest<{ status: string }>("/health");

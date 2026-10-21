@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { UserPlus, ArrowRight } from "lucide-react";
-import { registerUser } from "@/lib/api";
+import { registerUser, type Session } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Spinner } from "@/components/Loading";
 import { CopyField } from "@/components/CopyField";
 import { Field, ErrorAlert } from "@/pages/RegisterPage";
 import { logActivity } from "@/lib/activity";
 
-export function RegisterUserSection() {
+/** Admin form: sends the admin's key so users can be added to existing tenants. */
+export function RegisterUserSection({ session }: { session: Session }) {
   const [email, setEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
-  const role: "client" = "client";
+  const role = "client" as const;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -21,7 +22,10 @@ export function RegisterUserSection() {
     setApiKey(null);
     setLoading(true);
     try {
-      const { data } = await registerUser({ email, tenantId, role });
+      const { data } = await registerUser(
+        { email, tenantId, role },
+        session.apiKey,
+      );
       if (!data.apiKey) throw new Error("No API key returned");
       setApiKey(data.apiKey);
       logActivity({

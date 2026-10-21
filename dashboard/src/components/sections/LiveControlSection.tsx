@@ -13,6 +13,7 @@ interface Result {
   algorithm?: string;
   reset?: string | null;
   limit?: string | null;
+  degraded?: string | null;
   checkedAt: string;
 }
 
@@ -29,6 +30,7 @@ export function LiveControlSection({
   const [tenantId, setTenantId] = useState(effectiveTenant);
   const [route, setRoute] = useState("");
   const [apiKey, setApiKey] = useState(session.apiKey);
+  const [identifier, setIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -45,7 +47,12 @@ export function LiveControlSection({
     setLoading(true);
     setResult(null);
     try {
-      const res = await checkRate(tenantId.trim(), route.trim(), apiKey.trim());
+      const res = await checkRate(
+        tenantId.trim(),
+        route.trim(),
+        apiKey.trim(),
+        identifier.trim() || undefined,
+      );
       const allowed = res.status === 200 && res.data.allowed !== false;
       const result: Result = {
         allowed,
@@ -54,6 +61,7 @@ export function LiveControlSection({
         algorithm: res.data.algorithm,
         reset: res.headers.reset,
         limit: res.headers.limit,
+        degraded: res.data.degraded ?? res.headers.degraded,
         checkedAt: new Date().toLocaleTimeString(),
       };
       setResult(result);
@@ -118,6 +126,15 @@ export function LiveControlSection({
               className="form-input font-mono"
             />
           </Field>
+          <Field label="Identifier" hint="Optional: limit each end user separately">
+            <input
+              disabled={loading}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="user-123"
+              className="form-input font-mono"
+            />
+          </Field>
         </div>
 
         {error && <ErrorAlert message={error} />}
@@ -160,6 +177,13 @@ export function LiveControlSection({
               </div>
             </div>
           </div>
+
+          {result.degraded && (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 px-3.5 py-2.5 text-sm text-warning">
+              Limiter degraded ({result.degraded}): allowed without enforcement
+              (fail-open).
+            </div>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Detail label="Remaining" value={result.remaining ?? "—"} />

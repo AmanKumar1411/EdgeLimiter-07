@@ -8,6 +8,7 @@ import { AnalyticsSection } from "../components/sections/AnalyticsSection";
 import { OperationsSection } from "../components/sections/OperationsSection";
 import { AuditSection } from "../components/sections/AuditSection";
 import { SecurityIntelSection } from "../components/sections/SecurityIntelSection";
+import { KeysSection } from "../components/sections/KeysSection";
 
 export default function ClientDashboard() {
   const initial = sessionStore.get();
@@ -37,12 +38,13 @@ export default function ClientDashboard() {
       {active === "policies" && (
         <PoliciesSection session={session} onTenantChange={updateTenant} />
       )}
-      {active === "analytics" && <AnalyticsSection />}
+      {active === "analytics" && <AnalyticsSection session={session} />}
       {active === "operations" && (
         <OperationsSection session={session} onTenantChange={updateTenant} />
       )}
       {active === "security" && <SecurityIntelSection session={session} />}
-      {active === "audit" && <AuditSection />}
+      {active === "keys" && <KeysSection session={session} />}
+      {active === "audit" && <AuditSection session={session} />}
     </DashboardShell>
   );
 }

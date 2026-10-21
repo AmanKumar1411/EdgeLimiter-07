@@ -33,14 +33,14 @@ export default function AdminDashboard() {
       onActiveChange={setActive}
       portalLabel="Admin Portal"
     >
-      {active === "overview" && <SystemOverviewSection />}
+      {active === "overview" && <SystemOverviewSection session={session} />}
       {active === "tenants" && (
         <TenantsSection session={session} onTenantChange={updateTenant} />
       )}
       {active === "global-security" && <SecurityIntelSection session={session} />}
-      {active === "top-keys" && <TopKeysSection />}
-      {active === "register" && <RegisterUserSection />}
-      {active === "audit" && <AuditSection />}
+      {active === "top-keys" && <TopKeysSection session={session} />}
+      {active === "register" && <RegisterUserSection session={session} />}
+      {active === "audit" && <AuditSection session={session} />}
     </DashboardShell>
   );
 }

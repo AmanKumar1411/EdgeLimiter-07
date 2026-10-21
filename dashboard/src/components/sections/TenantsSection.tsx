@@ -9,6 +9,8 @@ import { PoliciesSection } from "./PoliciesSection";
 import { AnalyticsSection } from "./AnalyticsSection";
 import { OperationsSection } from "./OperationsSection";
 import { SecurityIntelSection } from "./SecurityIntelSection";
+import { KeysSection } from "./KeysSection";
+import { AuditSection } from "./AuditSection";
 
 interface TenantRow {
   tenantId: string;
@@ -43,7 +45,14 @@ function rowsFromTopKeys(keys: TopKey[]): TenantRow[] {
   );
 }
 
-type SubTab = "live" | "policies" | "analytics" | "security" | "operations";
+type SubTab =
+  | "live"
+  | "policies"
+  | "analytics"
+  | "security"
+  | "operations"
+  | "keys"
+  | "audit";
 
 export function TenantsSection({
   session,
@@ -63,7 +72,7 @@ export function TenantsSection({
     setLoading(true);
     setError(null);
     try {
-      const { data } = await getTopKeys();
+      const { data } = await getTopKeys(session.apiKey);
       setTenants(rowsFromTopKeys(Array.isArray(data) ? data : []));
       setUpdatedAt(new Date());
     } catch (err) {
@@ -71,7 +80,7 @@ export function TenantsSection({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [session.apiKey]);
 
   useEffect(() => {
     refresh();
@@ -105,6 +114,8 @@ export function TenantsSection({
               ["policies", "Policies"],
               ["security", "Security"],
               ["operations", "Operations"],
+              ["keys", "API Keys"],
+              ["audit", "Audit"],
             ] as [SubTab, string][]
           ).map(([id, label]) => (
             <button
@@ -140,6 +151,12 @@ export function TenantsSection({
         )}
         {subTab === "security" && (
           <SecurityIntelSection session={session} viewedTenantId={selected} />
+        )}
+        {subTab === "keys" && (
+          <KeysSection session={session} viewedTenantId={selected} />
+        )}
+        {subTab === "audit" && (
+          <AuditSection session={session} viewedTenantId={selected} />
         )}
         {subTab === "operations" && (
           <OperationsSection

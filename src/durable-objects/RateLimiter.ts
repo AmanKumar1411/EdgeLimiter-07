@@ -12,15 +12,30 @@ type ResetRequest = {
   route?: string;
 };
 
-const RATE_LIMIT_STATE_KEYS = [
-  "timestamps",
-  "window",
-  "count",
-  "tokens",
-  "lastRefill",
-  "retryAfter",
-  "blockedUntil",
-];
+export type RateLimitDecision = {
+  allowed: boolean;
+  remaining: number;
+  retryAfter: number;
+  algorithm: string;
+  /*
+   True only for the first blocked request after allowed traffic, so the
+   Worker can write one audit entry per block streak instead of one per
+   blocked request (which would turn an attack into D1 write load).
+  */
+  firstBlock: boolean;
+};
+
+// Extra time before idle state is deleted, to absorb clock skew.
+const CLEANUP_GRACE_MS = 5_000;
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+}
 
 export class RateLimiter {
   state: DurableObjectState;
@@ -32,8 +47,13 @@ export class RateLimiter {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const body =
-      (await request.json()) as RateLimitRequest | ResetRequest;
+    let body: RateLimitRequest | ResetRequest;
+
+    try {
+      body = (await request.json()) as RateLimitRequest | ResetRequest;
+    } catch {
+      return json({ error: "Invalid JSON body" }, 400);
+    }
 
     if ((body as ResetRequest).type === "reset") {
       return this.reset(body as ResetRequest);
@@ -46,20 +66,35 @@ export class RateLimiter {
     const algorithm =
       checkBody.algorithm ?? "sliding_window";
 
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      !Number.isInteger(windowSeconds) ||
+      windowSeconds < 1
+    ) {
+      return json(
+        { error: "limit and window must be positive integers" },
+        400
+      );
+    }
+
+    const nowMs = Date.now();
     let result;
 
     switch (algorithm) {
       case "fixed_window":
         result = await this.fixedWindow(
           limit,
-          windowSeconds
+          windowSeconds,
+          nowMs
         );
         break;
 
       case "token_bucket":
         result = await this.tokenBucket(
           limit,
-          windowSeconds
+          windowSeconds,
+          nowMs
         );
         break;
 
@@ -67,19 +102,17 @@ export class RateLimiter {
       default:
         result = await this.slidingWindow(
           limit,
-          windowSeconds
+          windowSeconds,
+          nowMs
         );
         break;
     }
 
-    return new Response(
-      JSON.stringify(result),
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const firstBlock = await this.trackBlockStreak(result.allowed);
+    await this.scheduleCleanup(windowSeconds, nowMs);
+
+    const decision: RateLimitDecision = { ...result, firstBlock };
+    return json(decision);
   }
 
   /*
@@ -90,39 +123,103 @@ export class RateLimiter {
     const route = body.route?.trim();
 
     if (!tenantId || !route) {
-      return new Response(
-        JSON.stringify({
-          error: "tenantId and route are required",
-        }),
+      return json(
         {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+          error: "tenantId and route are required",
+        },
+        400
       );
     }
 
-    const rateLimitKey = `${tenantId}:${route}`;
+    // Each object holds exactly one tenant/route(/identifier) counter, so
+    // clearing everything also removes keys written by older versions.
+    await this.state.storage.deleteAlarm();
+    await this.state.storage.deleteAll();
 
-    await this.state.storage.delete([
-      ...RATE_LIMIT_STATE_KEYS,
-      ...RATE_LIMIT_STATE_KEYS.map(
-        (key) => `${rateLimitKey}:${key}`
-      ),
-    ]);
+    return json({
+      success: true,
+      message: "Rate limit counter reset successfully",
+    });
+  }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "Rate limit counter reset successfully",
-      }),
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+  /*
+    Idle cleanup: once a full window passes with no traffic the state is
+    equivalent to empty (timestamps expired, fixed window rolled over,
+    bucket refilled), so delete it instead of keeping it forever.
+  */
+  async alarm() {
+    const windowSeconds =
+      await this.state.storage.get<number>("windowSeconds");
+    const lastActivity = await this.lastActivityMs();
+
+    if (!windowSeconds || lastActivity === null) {
+      await this.state.storage.deleteAll();
+      return;
+    }
+
+    const expiresAt =
+      lastActivity + windowSeconds * 1000 + CLEANUP_GRACE_MS;
+
+    if (Date.now() >= expiresAt) {
+      await this.state.storage.deleteAll();
+    } else {
+      await this.state.storage.setAlarm(expiresAt);
+    }
+  }
+
+  async trackBlockStreak(allowed: boolean) {
+    const blocking =
+      (await this.state.storage.get<boolean>("blocking")) ?? false;
+
+    if (allowed) {
+      if (blocking) await this.state.storage.delete("blocking");
+      return false;
+    }
+
+    if (blocking) return false;
+
+    await this.state.storage.put("blocking", true);
+    return true;
+  }
+
+  async scheduleCleanup(windowSeconds: number, nowMs: number) {
+    const storedWindow =
+      await this.state.storage.get<number>("windowSeconds");
+
+    if (storedWindow !== windowSeconds) {
+      await this.state.storage.put("windowSeconds", windowSeconds);
+    }
+
+    if ((await this.state.storage.getAlarm()) === null) {
+      await this.state.storage.setAlarm(
+        nowMs + windowSeconds * 1000 + CLEANUP_GRACE_MS
+      );
+    }
+  }
+
+  async lastActivityMs(): Promise<number | null> {
+    const windowSeconds =
+      (await this.state.storage.get<number>("windowSeconds")) ?? 0;
+    const timestamps =
+      await this.state.storage.get<number[]>("timestamps");
+    const fixedWindow = await this.state.storage.get<number>("window");
+    const lastRefill =
+      await this.state.storage.get<number>("lastRefill");
+
+    const candidates: number[] = [];
+
+    if (timestamps?.length) {
+      candidates.push((Math.max(...timestamps) + 1) * 1000);
+    }
+    if (fixedWindow !== undefined) {
+      // End of the stored window (conservative upper bound).
+      candidates.push((fixedWindow + 1) * windowSeconds * 1000);
+    }
+    if (lastRefill !== undefined) {
+      candidates.push(lastRefill);
+    }
+
+    return candidates.length ? Math.max(...candidates) : null;
   }
 
   /*
@@ -130,16 +227,17 @@ export class RateLimiter {
   */
   async slidingWindow(
     limit: number,
-    windowSeconds: number
+    windowSeconds: number,
+    nowMs: number = Date.now()
   ) {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(nowMs / 1000);
 
-    let timestamps: number[] =
+    const stored: number[] =
       (await this.state.storage.get<number[]>(
         "timestamps"
       )) || [];
 
-    timestamps = timestamps.filter(
+    const timestamps = stored.filter(
       (timestamp) =>
         now - timestamp < windowSeconds
     );
@@ -150,20 +248,22 @@ export class RateLimiter {
     if (timestamps.length < limit) {
       timestamps.push(now);
       allowed = true;
-      // Keep at most `limit` entries to prevent the stored array from
-      // exceeding the Cloudflare DO 128KB per-value storage limit.
-      if (timestamps.length > limit) {
-        timestamps = timestamps.slice(-limit);
-      }
     } else {
+      // A slot frees up once enough entries expire to drop below `limit`.
+      // That is timestamps[0] only when length === limit; after the limit is
+      // lowered the array can hold more entries than the new limit.
       retryAfter =
-        windowSeconds - (now - timestamps[0]);
+        windowSeconds -
+        (now - timestamps[timestamps.length - limit]);
     }
 
-    await this.state.storage.put(
-      "timestamps",
-      timestamps
-    );
+    // Blocked requests that pruned nothing leave state unchanged.
+    if (allowed || timestamps.length !== stored.length) {
+      await this.state.storage.put(
+        "timestamps",
+        timestamps
+      );
+    }
 
     return {
       allowed,
@@ -181,9 +281,10 @@ export class RateLimiter {
   */
   async fixedWindow(
     limit: number,
-    windowSeconds: number
+    windowSeconds: number,
+    nowMs: number = Date.now()
   ) {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(nowMs / 1000);
     const currentWindow = Math.floor(
       now / windowSeconds
     );
@@ -229,9 +330,10 @@ export class RateLimiter {
   */
   async tokenBucket(
     limit: number,
-    windowSeconds: number
+    windowSeconds: number,
+    nowMs: number = Date.now()
   ) {
-    const now = Date.now();
+    const now = nowMs;
 
     let tokens =
       (await this.state.storage.get<number>(
@@ -246,7 +348,7 @@ export class RateLimiter {
     const refillRate =
       limit / (windowSeconds * 1000);
 
-    const elapsed = now - lastRefill;
+    const elapsed = Math.max(0, now - lastRefill);
     const refill = elapsed * refillRate;
 
     tokens = Math.min(
@@ -263,19 +365,16 @@ export class RateLimiter {
       allowed = true;
     }
 
-    await this.state.storage.put(
-      "tokens",
-      tokens
-    );
+    // Single batch write so tokens and lastRefill are committed together.
+    await this.state.storage.put({
+      tokens,
+      lastRefill,
+    });
 
-    await this.state.storage.put(
-      "lastRefill",
-      lastRefill
-    );
-
-    // Time (seconds) until one full token is available again.
+    // Seconds until one full token is available. Only meaningful when
+    // blocked; an allowed response must not carry Retry-After.
     const retryAfter =
-      tokens < 1
+      !allowed
         ? Math.ceil((1 - tokens) / refillRate / 1000)
         : 0;
 

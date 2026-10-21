@@ -28,7 +28,21 @@ coverage/
 # Cloudflare / Wrangler
 .wrangler/
 .dev.vars
+.dev.vars.*
+!.dev.vars.example
 worker-configuration.d.ts
+
+# Local D1 exports / backups (may contain user data or plaintext API keys)
+*.sqlite
+*.sqlite3
+*.db
+backups/
+
+# Test artifacts (Vitest / Playwright)
+dashboard/test-results/
+dashboard/playwright-report/
+dashboard/blob-report/
+dashboard/playwright/.cache/
 
 # Dashboard build artifacts
 dashboard/node_modules/

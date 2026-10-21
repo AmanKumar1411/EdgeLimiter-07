@@ -5,6 +5,7 @@ import {
   getTopKeys,
   type MetricsRes,
   type TopKey,
+  type Session,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton, Spinner } from "@/components/Loading";
@@ -16,7 +17,8 @@ function fmt(n: number) {
   return n.toLocaleString();
 }
 
-export function SystemOverviewSection() {
+export function SystemOverviewSection({ session }: { session: Session }) {
+  const { apiKey } = session;
   const [metrics, setMetrics] = useState<MetricsRes | null>(null);
   const [topKeys, setTopKeys] = useState<TopKey[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,7 +29,10 @@ export function SystemOverviewSection() {
     setLoading(true);
     setError(null);
     try {
-      const [m, t] = await Promise.all([getMetrics(), getTopKeys()]);
+      const [m, t] = await Promise.all([
+        getMetrics(apiKey),
+        getTopKeys(apiKey),
+      ]);
       setMetrics(m.data);
       setTopKeys(Array.isArray(t.data) ? t.data : []);
       setUpdatedAt(new Date());
@@ -38,7 +43,7 @@ export function SystemOverviewSection() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     refresh();

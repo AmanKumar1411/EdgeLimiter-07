@@ -19,9 +19,9 @@ function formatNumber(n: number): string {
 }
 
 interface Props {
-  session?: Session;
+  session: Session;
   viewedTenantId?: string;
-  /** When true, use system-wide /metrics. When false (default), use /client/metrics scoped to session/viewed key. */
+  /** When true, use system-wide /metrics (super_admin only). When false (default), scope to the session's or viewed tenant. */
   systemWide?: boolean;
 }
 
@@ -29,23 +29,27 @@ export function AnalyticsSection({
   session,
   viewedTenantId,
   systemWide,
-}: Props = {}) {
+}: Props) {
   const [metrics, setMetrics] = useState<MetricsRes | null>(null);
   const [topKeys, setTopKeys] = useState<TopKey[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  const useSystem = systemWide || !session;
+  const useSystem = !!systemWide;
+  const { apiKey } = session;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const metricsP = useSystem
-        ? getMetrics()
-        : getClientMetrics(session!.apiKey);
-      const [m, t] = await Promise.all([metricsP, getTopKeys()]);
+        ? getMetrics(apiKey)
+        : getClientMetrics(apiKey, viewedTenantId);
+      const [m, t] = await Promise.all([
+        metricsP,
+        getTopKeys(apiKey, useSystem ? undefined : viewedTenantId),
+      ]);
       setMetrics(m.data);
       setTopKeys(Array.isArray(t.data) ? t.data : []);
       setUpdatedAt(new Date());
@@ -54,7 +58,7 @@ export function AnalyticsSection({
     } finally {
       setLoading(false);
     }
-  }, [useSystem, session]);
+  }, [useSystem, apiKey, viewedTenantId]);
 
   useEffect(() => {
     refresh();
@@ -64,7 +68,7 @@ export function AnalyticsSection({
 
   const scopeLabel = useSystem
     ? "System-wide"
-    : `Tenant ${viewedTenantId ?? session?.tenantId ?? ""}`;
+    : `Tenant ${viewedTenantId ?? session.tenantId}`;
 
   return (
     <div className="space-y-6">

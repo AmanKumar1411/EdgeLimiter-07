@@ -113,7 +113,14 @@ export function SecurityIntelSection({
               AI Summary
             </h3>
             {report && (
-              <StatusBadge tone={tone}>Score {Math.round(score)}%</StatusBadge>
+              <div className="flex items-center gap-2">
+                {report.intelligenceSource && (
+                  <StatusBadge tone="muted">
+                    {report.intelligenceSource === "ai" ? "Workers AI" : "Rule-based"}
+                  </StatusBadge>
+                )}
+                <StatusBadge tone={tone}>Score {Math.round(score)}%</StatusBadge>
+              </div>
             )}
           </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, KeyRound } from "lucide-react";
-import { getTopKeys, type TopKey } from "@/lib/api";
+import { getTopKeys, type TopKey, type Session } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton, Spinner } from "@/components/Loading";
 import { ErrorAlert } from "@/pages/RegisterPage";
@@ -11,7 +11,8 @@ function fmt(n: number) {
   return n.toLocaleString();
 }
 
-export function TopKeysSection() {
+export function TopKeysSection({ session }: { session: Session }) {
+  const { apiKey } = session;
   const [keys, setKeys] = useState<TopKey[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export function TopKeysSection() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await getTopKeys();
+      const { data } = await getTopKeys(apiKey);
       setKeys(Array.isArray(data) ? data : []);
       setUpdatedAt(new Date());
     } catch (err) {
@@ -29,7 +30,7 @@ export function TopKeysSection() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     refresh();

@@ -10,7 +10,7 @@ export default function Register() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
-  const [role, setRole] = useState<"client" | "super_admin">("client");
+  const role = "client" as const;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export default function Register() {
               </Field>
               <Field
                 label="Tenant ID"
-                hint="Used for all API protection policies"
+                hint="New tenant: lowercase letters, digits, '-' or '_'"
               >
                 <input
                   type="text"
@@ -82,21 +82,10 @@ export default function Register() {
                     setError(null);
                   }}
                   placeholder="company-a"
+                  pattern="[a-z0-9]([a-z0-9_\-]{0,62}[a-z0-9])?"
+                  title="1-64 chars: lowercase letters, digits, '-' or '_'"
                   className="form-input font-mono"
                 />
-              </Field>
-              <Field label="Role">
-                <select
-                  disabled={loading}
-                  value={role}
-                  onChange={(e) =>
-                    setRole(e.target.value as "client" | "super_admin")
-                  }
-                  className="form-input"
-                >
-                  <option value="client">Client</option>
-                  <option value="super_admin">Super Admin</option>
-                </select>
               </Field>
 
               {error && <ErrorAlert message={error} />}

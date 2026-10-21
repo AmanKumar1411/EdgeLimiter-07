@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LogOut,
@@ -15,8 +15,9 @@ import {
   LayoutDashboard,
   Users,
   KeyRound,
+  KeySquare,
 } from "lucide-react";
-import { sessionStore, type Session } from "@/lib/api";
+import { getHealth, sessionStore, type Session } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export const CLIENT_NAV: NavItem[] = [
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "security", label: "Security", icon: ShieldAlert },
   { id: "operations", label: "Operations", icon: Wrench },
+  { id: "keys", label: "API Keys", icon: KeySquare },
   { id: "audit", label: "Audit", icon: ScrollText },
 ];
 
@@ -63,6 +65,21 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [healthy, setHealthy] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const probe = () =>
+      getHealth()
+        .then(() => !cancelled && setHealthy(true))
+        .catch(() => !cancelled && setHealthy(false));
+    probe();
+    const id = setInterval(probe, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const activeItem = nav.find((n) => n.id === active);
 
@@ -128,15 +145,21 @@ export function DashboardShell({
           <div className="glass-card p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                Edge Status
+                API Status
               </span>
-              <StatusBadge tone="success" pulse>
-                Live
-              </StatusBadge>
+              {healthy === null ? (
+                <StatusBadge tone="muted">Checking</StatusBadge>
+              ) : healthy ? (
+                <StatusBadge tone="success" pulse>
+                  Live
+                </StatusBadge>
+              ) : (
+                <StatusBadge tone="danger">Unreachable</StatusBadge>
+              )}
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Shield className="h-3 w-3" />
-              All POPs healthy
+              {healthy === false ? "Worker health check failed" : "Worker /health responding"}
             </div>
           </div>
         </div>

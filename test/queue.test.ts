@@ -1,18 +1,10 @@
-import {
-  createExecutionContext,
-  createMessageBatch,
-  getQueueResult,
-} from "cloudflare:test";
+import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import type { Env } from "../src/types/env";
+import type { Env } from "../src/shared/env";
 import { check, flushQueue, makeEnv, register, savePolicy, unique } from "./helpers";
 
-async function runBatch(
-  env: Env,
-  bodies: unknown[],
-  inspect?: (batch: MessageBatch<unknown>) => void
-) {
+async function runBatch(env: Env, bodies: unknown[], inspect?: (batch: MessageBatch<unknown>) => void) {
   const batch = createMessageBatch(
     "rate-limit-logs",
     bodies.map((body, i) => ({
@@ -20,11 +12,11 @@ async function runBatch(
       timestamp: new Date(),
       attempts: 2,
       body,
-    }))
+    })),
   );
   inspect?.(batch);
   const ctx = createExecutionContext();
-  await worker.queue(batch, env, ctx);
+  await worker.queue(batch, env);
   return getQueueResult(batch, ctx);
 }
 
@@ -40,20 +32,17 @@ describe("queue consumer", () => {
     expect(result?.explicitAcks).toHaveLength(4);
     expect(result?.retryMessages).toHaveLength(0);
 
-    const logs = await env.DB.prepare(
-      "SELECT reason, allowed FROM security_logs WHERE tenant_id = ? ORDER BY id"
-    ).bind(tenantId).all<any>();
-    expect(logs.results.map((l) => l.reason)).toEqual([
-      null,
-      null,
-      "rate_limit_exceeded",
-      "unauthorized_api_key",
-    ]);
+    const logs = await env.DB.prepare("SELECT reason, allowed FROM security_logs WHERE tenant_id = ? ORDER BY id")
+      .bind(tenantId)
+      .all<any>();
+    expect(logs.results.map((l) => l.reason)).toEqual([null, null, "rate_limit_exceeded", "unauthorized_api_key"]);
 
     // Only authenticated decisions count toward usage.
     const summary = await env.DB.prepare(
-      "SELECT total_requests, blocked_requests FROM logs_summary WHERE tenant_id = ?"
-    ).bind(tenantId).first<any>();
+      "SELECT total_requests, blocked_requests FROM logs_summary WHERE tenant_id = ?",
+    )
+      .bind(tenantId)
+      .first<any>();
     expect(summary).toEqual({ total_requests: 3, blocked_requests: 1 });
   });
 
@@ -128,15 +117,17 @@ describe("queue consumer", () => {
     ]);
     expect(result.explicitAcks).toHaveLength(2);
 
-    const log = await env.DB.prepare(
-      "SELECT api_key_hint FROM security_logs WHERE tenant_id = ? AND route = '/old'"
-    ).bind(tenantId).first<any>();
+    const log = await env.DB.prepare("SELECT api_key_hint FROM security_logs WHERE tenant_id = ? AND route = '/old'")
+      .bind(tenantId)
+      .first<any>();
     expect(log.api_key_hint).toMatch(/••••/);
     expect(log.api_key_hint).not.toBe(apiKey);
 
     const summary = await env.DB.prepare(
-      "SELECT total_requests, blocked_requests FROM logs_summary WHERE tenant_id = ?"
-    ).bind(tenantId).first<any>();
+      "SELECT total_requests, blocked_requests FROM logs_summary WHERE tenant_id = ?",
+    )
+      .bind(tenantId)
+      .first<any>();
     expect(summary).toEqual({ total_requests: 2, blocked_requests: 1 });
   });
 });

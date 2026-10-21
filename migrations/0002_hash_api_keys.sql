@@ -6,7 +6,7 @@
 --
 -- SQLite has no SHA-256, so existing keys move to `legacy_key`; the Worker
 -- hashes each one on first use and clears the plaintext (see
--- src/utils/apiKeys.ts). New keys are only ever stored as `key_hash`.
+-- src/keys/keys.ts). New keys are only ever stored as `key_hash`.
 
 PRAGMA defer_foreign_keys = on;
 

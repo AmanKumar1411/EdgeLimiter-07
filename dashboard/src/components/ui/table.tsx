@@ -1,72 +1,65 @@
-import * as React from "react";
+import { useState, type HTMLAttributes, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
+import { Button } from "./button";
+import { cn } from "@/lib/format";
 
-import { cn } from "@/lib/utils";
-
-const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
-      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
+  return (
+    // `relative` keeps absolutely positioned children (sr-only headers) inside
+    // the scroll container; otherwise they widen the whole page on mobile.
+    <div className="relative overflow-x-auto">
+      <table className={cn("w-full border-collapse text-[13px]", className)} {...props} />
     </div>
-  ),
-);
-Table.displayName = "Table";
+  );
+}
 
-const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />,
-);
-TableHeader.displayName = "TableHeader";
-
-const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => (
-    <tbody ref={ref} className={cn("[&_tr:last-child]:border-0", className)} {...props} />
-  ),
-);
-TableBody.displayName = "TableBody";
-
-const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => (
-    <tfoot ref={ref} className={cn("border-t bg-muted/50 font-medium [&>tr]:last:border-b-0", className)} {...props} />
-  ),
-);
-TableFooter.displayName = "TableFooter";
-
-const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
-  ({ className, ...props }, ref) => (
-    <tr
-      ref={ref}
-      className={cn("border-b transition-colors data-[state=selected]:bg-muted hover:bg-muted/50", className)}
-      {...props}
-    />
-  ),
-);
-TableRow.displayName = "TableRow";
-
-const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement>>(
-  ({ className, ...props }, ref) => (
+export function Th({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
+  return (
     <th
-      ref={ref}
       className={cn(
-        "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "h-9 whitespace-nowrap border-b px-4 text-left text-xs font-medium text-muted-foreground",
         className,
       )}
       {...props}
     />
-  ),
-);
-TableHead.displayName = "TableHead";
+  );
+}
 
-const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
-  ({ className, ...props }, ref) => (
-    <td ref={ref} className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />
-  ),
-);
-TableCell.displayName = "TableCell";
+export function Td({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
+  return <td className={cn("border-b px-4 py-2.5 align-middle", className)} {...props} />;
+}
 
-const TableCaption = React.forwardRef<HTMLTableCaptionElement, React.HTMLAttributes<HTMLTableCaptionElement>>(
-  ({ className, ...props }, ref) => (
-    <caption ref={ref} className={cn("mt-4 text-sm text-muted-foreground", className)} {...props} />
-  ),
-);
-TableCaption.displayName = "TableCaption";
+export function usePagination<T>(items: T[], pageSize = 10) {
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  // Clamp when filtering shrinks the list.
+  const current = Math.min(page, pageCount - 1);
+  return {
+    rows: items.slice(current * pageSize, (current + 1) * pageSize),
+    page: current,
+    pageCount,
+    total: items.length,
+    pageSize,
+    setPage,
+  };
+}
 
-export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };
+export function Pagination({ page, pageCount, total, pageSize, setPage }: ReturnType<typeof usePagination>) {
+  if (total <= pageSize) return null;
+  const first = page * pageSize + 1;
+  const last = Math.min(total, first + pageSize - 1);
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs text-muted-foreground">
+      <span>
+        {first}–{last} of {total}
+      </span>
+      <div className="flex gap-1.5">
+        <Button size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+          Previous
+        </Button>
+        <Button size="sm" disabled={page >= pageCount - 1} onClick={() => setPage(page + 1)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -13,7 +13,7 @@ EdgeLimiter is a multi-tenant, edge-native rate limiting service built on Cloudf
 - **RBAC + tenant isolation** enforced server-side on every endpoint (`client` / `super_admin`)
 - **Security intelligence**: rule-based scoring, optionally summarised by Workers AI (timeout, cache, rule-based fallback)
 - **Audit log**: policy changes, resets, key create/revoke, one entry per rate-limit block streak
-- **React dashboard**: client portal and admin portal
+- **React dashboard**: onboarding in three steps, limits in plain words, live activity, keys and audit log; admins get the same views for any tenant (pages: `docs/BEHAVIOR.md`, screenshots: `docs/ui/`)
 
 ---
 
@@ -24,13 +24,15 @@ Your backend
      │  POST /check {tenantId, route, identifier?}   x-api-key
      ▼
 Cloudflare Worker (Hono)
-     ├── D1: validate key hash + tenant          (fail-closed)
-     ├── KV: load policy tenantId:route          (cached at edge, ≤ ~60s stale)
-     ├── Durable Object: atomic count + decide   (one per tenant:route[:identifier])
+     ├── D1: validate key hash + tenant          (fail-closed)          ┐ in parallel
+     ├── KV: load policy tenantId:route          (edge-cached, ≤ ~60s)  ┘
+     ├── Durable Object RPC: count + decide      (one per tenant:route[:identifier])
      ├── Queue → consumer → D1 security_logs + logs_summary   (async, best-effort)
      ├── D1 audit_logs (first block of a streak)              (async, best-effort)
      └── Analytics Engine data point                          (best-effort)
 ```
+
+Code is organized by feature (`src/ratelimit`, `policies`, `keys`, `analytics`, `ai`, `shared`). Full picture, trade-offs and how to add an algorithm: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 | Binding | Purpose |
 |---|---|
@@ -193,11 +195,15 @@ Security logs and analytics arrive through the queue, in batches of up to 5 seco
 ```bash
 npm test            # Worker: Vitest + @cloudflare/vitest-plugin (Miniflare)
 npm run typecheck   # src + tests
+npm run lint        # ESLint (type-aware for src/), 0 warnings allowed; dashboard: cd dashboard && npm run lint
+npm run format:check  # Prettier, both packages (npm run format to fix)
+npm run knip        # unused files, exports and dependencies, both packages
 cd dashboard && npm run test:e2e   # Playwright, real local Worker + Vite
 ```
 
+- **Algorithms** (`test/algorithms.test.ts`) are pure functions tested without any Cloudflare runtime.
 - **Worker tests** (`test/`) run inside workerd against local D1, KV, Durable Objects and Queues. They cover allow/block boundaries for all three algorithms, window reset, concurrent bursts, per-tenant/route/identifier isolation, persistence across Durable Object eviction, keys (hashing, legacy upgrade, revocation), RBAC and cross-tenant access, the queue consumer (retries, poison messages, legacy events), failure of each dependency, report masking, retention, and migration 0002 on legacy data. Workers AI is always mocked; tests never use the real binding.
-- **Dashboard e2e** (`dashboard/e2e/`) starts `wrangler dev --local` with a fresh temporary state plus Vite, and drives the system Google Chrome (`channel: "chrome"`, no browser download). It covers register, login, policy CRUD, live checks, key create/revoke, audit, analytics, security, admin drill-down, mobile layout, and sign-out on revocation.
+- **Dashboard e2e** (`dashboard/e2e/`) starts `wrangler dev --local` with a fresh temporary state plus Vite, and drives the system Google Chrome (`channel: "chrome"`, no browser download). It covers onboarding (first request arriving live), limit CRUD, test requests until blocked, key create/revoke, audit, overview → filtered activity links, light/dark theme, admin tenant views, 375 px mobile, and sign-out on revocation. `npx playwright test screenshots` with `SCREENSHOT_DIR` set regenerates `docs/ui/`.
 
 ---
 
@@ -256,7 +262,7 @@ Daily at 00:00 UTC: prunes `security_logs` older than `SECURITY_LOG_RETENTION_DA
 | Cloudflare build fails at `npm clean-install` with `ERESOLVE … @cloudflare/workers-types` | `wrangler` and `@cloudflare/workers-types` must agree: wrangler 4.15x expects workers-types `^5`. Keep them in step, and never commit a lockfile produced with `--legacy-peer-deps` (CI's `npm ci` rejects it). |
 | Every request returns `401` right after upgrading | The migration was applied but the new Worker isn't deployed yet (or the reverse). Deploy immediately. |
 | A policy change isn't enforced everywhere | KV propagation, up to ~60s. |
-| Dashboard shows `Failed to connect` | `VITE_API_BASE` is wrong, or the dashboard origin isn't in `CORS_ORIGINS`. |
+| Dashboard says it can't reach the API | `VITE_API_BASE` is wrong, or the dashboard origin isn't in `CORS_ORIGINS`. |
 | Dashboard can't read `X-RateLimit-*` headers | Fixed: the Worker now exposes them via CORS. Redeploy if you see this. |
 | Analytics and security logs lag a few seconds | Queue batching (`max_batch_timeout = 5`). |
 | `/check` returns `X-EdgeLimiter-Degraded` | KV or the Durable Object failed and fail-open allowed the request. Check Workers logs. |

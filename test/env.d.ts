@@ -1,5 +1,5 @@
 import type { D1Migration } from "cloudflare:test";
-import type { Env as WorkerEnv } from "../src/types/env";
+import type { Env as WorkerEnv } from "../src/shared/env";
 
 declare global {
   namespace Cloudflare {

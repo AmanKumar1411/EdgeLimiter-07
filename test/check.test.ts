@@ -1,14 +1,6 @@
 import { evictAllDurableObjects } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import {
-  call,
-  check,
-  json,
-  makeEnv,
-  register,
-  savePolicy,
-  unique,
-} from "./helpers";
+import { call, check, json, makeEnv, register, savePolicy, unique } from "./helpers";
 
 const ALGORITHMS = ["sliding_window", "fixed_window", "token_bucket"];
 
@@ -32,11 +24,8 @@ describe("/check enforcement", () => {
       expect(body).toMatchObject({ allowed: false, remaining: 0, algorithm });
       expect(body.firstBlock).toBeUndefined(); // internal flag not exposed
       expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
-      const expectedReset =
-        Math.floor(Date.now() / 1000) + Number(blocked.headers.get("Retry-After"));
-      expect(
-        Math.abs(Number(blocked.headers.get("X-RateLimit-Reset")) - expectedReset)
-      ).toBeLessThanOrEqual(1);
+      const expectedReset = Math.floor(Date.now() / 1000) + Number(blocked.headers.get("Retry-After"));
+      expect(Math.abs(Number(blocked.headers.get("X-RateLimit-Reset")) - expectedReset)).toBeLessThanOrEqual(1);
     });
 
     it(`${algorithm}: concurrent burst admits exactly the limit`, async () => {
@@ -44,9 +33,7 @@ describe("/check enforcement", () => {
       const { tenantId, apiKey } = await register(env);
       await savePolicy(env, apiKey, { tenantId, route: "/burst", limit: 10, window: 3600, algorithm });
 
-      const results = await Promise.all(
-        Array.from({ length: 30 }, () => check(env, apiKey, tenantId, "/burst"))
-      );
+      const results = await Promise.all(Array.from({ length: 30 }, () => check(env, apiKey, tenantId, "/burst")));
       const statuses = results.map((r) => r.status);
       expect(statuses.filter((s) => s === 200)).toHaveLength(10);
       expect(statuses.filter((s) => s === 429)).toHaveLength(20);
@@ -140,7 +127,7 @@ describe("/check enforcement", () => {
     const { tenantId, apiKey } = await register(env);
     await env.CONFIG_KV.put(
       `${tenantId}:/legacy`,
-      JSON.stringify({ tenantId, route: "/legacy", limit: 1.7, window: 60, algorithm: "bogus" })
+      JSON.stringify({ tenantId, route: "/legacy", limit: 1.7, window: 60, algorithm: "bogus" }),
     );
     const first = await check(env, apiKey, tenantId, "/legacy");
     expect(first.status).toBe(200);

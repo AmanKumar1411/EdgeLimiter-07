@@ -1,16 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hashApiKey } from "../src/utils/apiKeys";
-import {
-  call,
-  check,
-  flushQueue,
-  json,
-  makeEnv,
-  register,
-  registerAdmin,
-  savePolicy,
-  unique,
-} from "./helpers";
+import { hashApiKey } from "../src/keys/keys";
+import { call, check, flushQueue, json, makeEnv, register, registerAdmin, savePolicy, unique } from "./helpers";
 
 describe("registration", () => {
   it("creates a tenant, shows the key once, and stores only its hash", async () => {
@@ -18,10 +8,14 @@ describe("registration", () => {
     const { tenantId, apiKey, email } = await register(env);
     expect(apiKey).toMatch(/^edge_limit_[0-9a-f]{32}$/);
 
-    const row = await env.DB.prepare(`
+    const row = await env.DB.prepare(
+      `
       SELECT a.key_hash, a.legacy_key, a.key_hint, u.tenant_id
       FROM api_keys a JOIN users u ON u.id = a.user_id WHERE u.email = ?
-    `).bind(email).first<any>();
+    `,
+    )
+      .bind(email)
+      .first<any>();
     expect(row.key_hash).toBe(await hashApiKey(apiKey));
     expect(row.legacy_key).toBeNull();
     expect(row.key_hint).not.toContain(apiKey.slice(12, -4));
@@ -54,10 +48,12 @@ describe("registration", () => {
     });
     expect(added.status).toBe(200);
 
-    const orphans = await env.DB.prepare(`
+    const orphans = await env.DB.prepare(
+      `
       SELECT COUNT(*) AS n FROM users u
       WHERE NOT EXISTS (SELECT 1 FROM api_keys a WHERE a.user_id = u.id)
-    `).first<{ n: number }>();
+    `,
+    ).first<{ n: number }>();
     expect(orphans?.n).toBe(0);
   });
 
@@ -75,9 +71,11 @@ describe("registration", () => {
     expect(badEmail.status).toBe(400);
     expect((await call(env, "POST", "/register", { body: "{bad" })).status).toBe(400);
     expect(
-      (await call(env, "POST", "/register", {
-        body: { email: `${unique("u")}@example.com`, tenantId: unique("t"), role: "super_admin" },
-      })).status
+      (
+        await call(env, "POST", "/register", {
+          body: { email: `${unique("u")}@example.com`, tenantId: unique("t"), role: "super_admin" },
+        })
+      ).status,
     ).toBe(400);
   });
 
@@ -106,9 +104,11 @@ describe("registration", () => {
 
     // Other IPs and admins are unaffected.
     expect(
-      (await call(env, "POST", "/register", {
-        body: { email: `${unique("u")}@example.com`, tenantId: unique("t") },
-      })).status
+      (
+        await call(env, "POST", "/register", {
+          body: { email: `${unique("u")}@example.com`, tenantId: unique("t") },
+        })
+      ).status,
     ).toBe(200);
   });
 });
@@ -170,18 +170,18 @@ describe("API key validation and revocation", () => {
     const env = makeEnv();
     const tenantId = unique("legacy");
     const legacyKey = "edge_limit_" + "ab".repeat(16);
-    const user = await env.DB.prepare(
-      "INSERT INTO users (email, role, tenant_id) VALUES (?, 'client', ?)"
-    ).bind(`${unique("l")}@example.com`, tenantId).run();
-    await env.DB.prepare(
-      "INSERT INTO api_keys (user_id, legacy_key, key_hint) VALUES (?, ?, 'edge_limit_a••••abab')"
-    ).bind(user.meta.last_row_id, legacyKey).run();
+    const user = await env.DB.prepare("INSERT INTO users (email, role, tenant_id) VALUES (?, 'client', ?)")
+      .bind(`${unique("l")}@example.com`, tenantId)
+      .run();
+    await env.DB.prepare("INSERT INTO api_keys (user_id, legacy_key, key_hint) VALUES (?, ?, 'edge_limit_a••••abab')")
+      .bind(user.meta.last_row_id, legacyKey)
+      .run();
 
     expect((await call(env, "GET", "/whoami", { apiKey: legacyKey })).status).toBe(200);
 
-    const row = await env.DB.prepare(
-      "SELECT key_hash, legacy_key FROM api_keys WHERE user_id = ?"
-    ).bind(user.meta.last_row_id).first<any>();
+    const row = await env.DB.prepare("SELECT key_hash, legacy_key FROM api_keys WHERE user_id = ?")
+      .bind(user.meta.last_row_id)
+      .first<any>();
     expect(row.legacy_key).toBeNull();
     expect(row.key_hash).toBe(await hashApiKey(legacyKey));
     expect((await call(env, "GET", "/whoami", { apiKey: legacyKey })).status).toBe(200);
@@ -267,7 +267,9 @@ describe("RBAC and tenant isolation", () => {
     expect(metrics.totalRequests).toBe(1); // a's own, param ignored
 
     const admin = await registerAdmin(env);
-    const drill = await json(await call(env, "GET", `/client/metrics?tenantId=${b.tenantId}`, { apiKey: admin.apiKey }));
+    const drill = await json(
+      await call(env, "GET", `/client/metrics?tenantId=${b.tenantId}`, { apiKey: admin.apiKey }),
+    );
     expect(drill.totalRequests).toBe(1);
     const adminTop = await json(await call(env, "GET", `/top-keys?tenantId=${b.tenantId}`, { apiKey: admin.apiKey }));
     expect(adminTop.map((k: any) => k.tenantId)).toEqual([b.tenantId]);

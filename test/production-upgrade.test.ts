@@ -1,12 +1,8 @@
-import {
-  createExecutionContext,
-  createMessageBatch,
-  getQueueResult,
-} from "cloudflare:test";
+import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
-import { hashApiKey } from "../src/utils/apiKeys";
+import { hashApiKey } from "../src/keys/keys";
 import { call, check, flushQueue, json, makeEnv, register, savePolicy, unique } from "./helpers";
 
 /*
@@ -84,21 +80,35 @@ beforeAll(async () => {
     db.prepare("INSERT INTO users (id, email, role, tenant_id) VALUES (1, 'early1@x.io', 'client', NULL)"),
     db.prepare("INSERT INTO users (id, email, role, tenant_id) VALUES (2, 'early2@x.io', 'client', NULL)"),
     db.prepare("INSERT INTO users (id, email, role, tenant_id) VALUES (3, 'acme@x.io', 'client', ?)").bind(tenant),
-    db.prepare("INSERT INTO users (id, email, plan, role, tenant_id) VALUES (7, 'root@x.io', 'enterprise', 'super_admin', 'admin')"),
+    db.prepare(
+      "INSERT INTO users (id, email, plan, role, tenant_id) VALUES (7, 'root@x.io', 'enterprise', 'super_admin', 'admin')",
+    ),
     db.prepare("INSERT INTO api_keys (user_id, api_key) VALUES (1, ?)").bind(tenantlessKey),
     db.prepare("INSERT INTO api_keys (user_id, api_key) VALUES (2, ?)").bind(tenantlessKey2),
     db.prepare("INSERT INTO api_keys (user_id, api_key) VALUES (3, ?)").bind(tenantKey),
     // The row that made the first remote attempt fail.
-    db.prepare("INSERT INTO logs_summary (api_key, total_requests, blocked_requests) VALUES (?, 9, 4)").bind(tenantlessKey),
-    db.prepare("INSERT INTO logs_summary (api_key, total_requests, blocked_requests) VALUES (?, 20, 5)").bind(tenantKey),
-    db.prepare(`
+    db
+      .prepare("INSERT INTO logs_summary (api_key, total_requests, blocked_requests) VALUES (?, 9, 4)")
+      .bind(tenantlessKey),
+    db
+      .prepare("INSERT INTO logs_summary (api_key, total_requests, blocked_requests) VALUES (?, 20, 5)")
+      .bind(tenantKey),
+    db
+      .prepare(
+        `
       INSERT INTO security_logs (tenant_id, api_key, route, ip_address, allowed, remaining, retry_after, created_at)
       VALUES (?, ?, '/x', '198.51.100.1', 0, 0, 3, ?)
-    `).bind(tenant, tenantKey, new Date().toISOString()),
-    db.prepare(`
+    `,
+      )
+      .bind(tenant, tenantKey, new Date().toISOString()),
+    db
+      .prepare(
+        `
       INSERT INTO audit_logs (tenant_id, api_key, actor, action_type, message, severity)
       VALUES (?, ?, 'client', 'policy_created', 'm', 'Medium')
-    `).bind(tenant, tenantKey),
+    `,
+      )
+      .bind(tenant, tenantKey),
   ]);
 
   // Same sequence as production: 0001 (idempotent here), then 0002.
@@ -109,7 +119,9 @@ beforeAll(async () => {
 
 describe("upgrading the production-shaped database", () => {
   it("migrates without losing data and keeps unattributable usage in the legacy table", async () => {
-    const keys = await db.prepare("SELECT user_id, key_hash, legacy_key IS NOT NULL AS legacy, key_hint FROM api_keys ORDER BY user_id").all<any>();
+    const keys = await db
+      .prepare("SELECT user_id, key_hash, legacy_key IS NOT NULL AS legacy, key_hint FROM api_keys ORDER BY user_id")
+      .all<any>();
     expect(keys.results).toEqual([
       { user_id: 1, key_hash: null, legacy: 1, key_hint: "edge_limit_1••••1111" },
       { user_id: 2, key_hash: null, legacy: 1, key_hint: "edge_limit_2••••2222" },
@@ -144,8 +156,10 @@ describe("upgrading the production-shaped database", () => {
     expect((await check(e, tenantKey, tenant, "/x")).status).toBe(200);
     expect((await check(e, tenantKey, tenant, "/x")).status).toBe(429);
     await flushQueue(e);
-    const summary = await db.prepare("SELECT total_requests, blocked_requests FROM logs_summary WHERE tenant_id = ?")
-      .bind(tenant).first();
+    const summary = await db
+      .prepare("SELECT total_requests, blocked_requests FROM logs_summary WHERE tenant_id = ?")
+      .bind(tenant)
+      .first();
     expect(summary).toEqual({ total_requests: 22, blocked_requests: 6 });
   });
 
@@ -155,7 +169,9 @@ describe("upgrading the production-shaped database", () => {
 
     expect(await json(await call(e, "GET", "/top-keys", { apiKey: tenantlessKey }))).toEqual([]);
     expect((await call(e, "GET", "/config", { apiKey: tenantlessKey })).status).toBe(400);
-    expect(await json(await call(e, "GET", "/client/metrics", { apiKey: tenantlessKey }))).toMatchObject({ totalRequests: 0 });
+    expect(await json(await call(e, "GET", "/client/metrics", { apiKey: tenantlessKey }))).toMatchObject({
+      totalRequests: 0,
+    });
     expect((await call(e, "GET", `/security-report?tenantId=${tenant}`, { apiKey: tenantlessKey })).status).toBe(403);
     expect((await call(e, "GET", `/config?tenantId=${tenant}`, { apiKey: tenantlessKey })).status).toBe(403);
     expect((await check(e, tenantlessKey, tenant, "/x")).status).toBe(403);
@@ -171,7 +187,7 @@ describe("upgrading the production-shaped database", () => {
       { id: "old", timestamp: new Date(), attempts: 1, body: { apiKey: tenantlessKey2, blocked: 1 } },
     ]);
     const ctx = createExecutionContext();
-    await worker.queue(batch, e, ctx);
+    await worker.queue(batch, e);
     const result = await getQueueResult(batch, ctx);
     expect(result.explicitAcks).toEqual(["old"]);
   });

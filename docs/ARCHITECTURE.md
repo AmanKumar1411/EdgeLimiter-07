@@ -95,7 +95,7 @@ flowchart LR
 
 | Problem | Now |
 |---|---|
-| God file; folders by type | Feature folders; `index.ts` is 90 lines of wiring |
+| God file; folders by type | Feature folders; `index.ts` is under 100 lines of wiring |
 | Algorithms couldn't be tested without Cloudflare | Pure `Check` functions, unit-tested directly |
 | Hand-rolled JSON over `fetch` to the Durable Object, and 4 stub helpers | Typed RPC (`limiter(env, name).check(rule)`) |
 | Abuse report and block-rate math copied 3× | `toMetrics` / `toAbuseReport` in `analytics/usage.ts` |

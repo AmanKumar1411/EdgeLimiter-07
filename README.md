@@ -24,13 +24,15 @@ Your backend
      │  POST /check {tenantId, route, identifier?}   x-api-key
      ▼
 Cloudflare Worker (Hono)
-     ├── D1: validate key hash + tenant          (fail-closed)
-     ├── KV: load policy tenantId:route          (cached at edge, ≤ ~60s stale)
-     ├── Durable Object: atomic count + decide   (one per tenant:route[:identifier])
+     ├── D1: validate key hash + tenant          (fail-closed)          ┐ in parallel
+     ├── KV: load policy tenantId:route          (edge-cached, ≤ ~60s)  ┘
+     ├── Durable Object RPC: count + decide      (one per tenant:route[:identifier])
      ├── Queue → consumer → D1 security_logs + logs_summary   (async, best-effort)
      ├── D1 audit_logs (first block of a streak)              (async, best-effort)
      └── Analytics Engine data point                          (best-effort)
 ```
+
+Code is organized by feature (`src/ratelimit`, `policies`, `keys`, `analytics`, `ai`, `shared`). Full picture, trade-offs and how to add an algorithm: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 | Binding | Purpose |
 |---|---|
@@ -193,9 +195,13 @@ Security logs and analytics arrive through the queue, in batches of up to 5 seco
 ```bash
 npm test            # Worker: Vitest + @cloudflare/vitest-plugin (Miniflare)
 npm run typecheck   # src + tests
+npm run lint        # ESLint (type-aware for src/), 0 warnings allowed; dashboard: cd dashboard && npm run lint
+npm run format:check  # Prettier, both packages (npm run format to fix)
+npm run knip        # unused files, exports and dependencies, both packages
 cd dashboard && npm run test:e2e   # Playwright, real local Worker + Vite
 ```
 
+- **Algorithms** (`test/algorithms.test.ts`) are pure functions tested without any Cloudflare runtime.
 - **Worker tests** (`test/`) run inside workerd against local D1, KV, Durable Objects and Queues. They cover allow/block boundaries for all three algorithms, window reset, concurrent bursts, per-tenant/route/identifier isolation, persistence across Durable Object eviction, keys (hashing, legacy upgrade, revocation), RBAC and cross-tenant access, the queue consumer (retries, poison messages, legacy events), failure of each dependency, report masking, retention, and migration 0002 on legacy data. Workers AI is always mocked; tests never use the real binding.
 - **Dashboard e2e** (`dashboard/e2e/`) starts `wrangler dev --local` with a fresh temporary state plus Vite, and drives the system Google Chrome (`channel: "chrome"`, no browser download). It covers onboarding (first request arriving live), limit CRUD, test requests until blocked, key create/revoke, audit, overview → filtered activity links, light/dark theme, admin tenant views, 375 px mobile, and sign-out on revocation. `npx playwright test screenshots` with `SCREENSHOT_DIR` set regenerates `docs/ui/`.
 

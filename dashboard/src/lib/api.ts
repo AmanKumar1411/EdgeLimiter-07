@@ -1,6 +1,5 @@
 export const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ||
-  "https://edge-limiter.edgeaman.workers.dev";
+  (import.meta.env.VITE_API_BASE as string | undefined) || "https://edge-limiter.edgeaman.workers.dev";
 
 export type Role = "client" | "super_admin";
 
@@ -70,9 +69,9 @@ async function send(path: string, { method = "GET", body, apiKey, query }: Reque
     throw new ApiError(`Can't reach the API at ${API_BASE}. Check your connection and that the Worker is running.`, 0);
   }
 
-  let data: unknown = null;
+  let payload: unknown = null;
   try {
-    data = JSON.parse(await response.text());
+    payload = JSON.parse(await response.text());
   } catch {
     // Empty or non-JSON body (e.g. an HTML error page from a proxy).
   }
@@ -86,19 +85,19 @@ async function send(path: string, { method = "GET", body, apiKey, query }: Reque
     }
   }
 
-  return { response, data };
+  return { response, payload };
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { response, data } = await send(path, options);
+  const { response, payload } = await send(path, options);
   if (!response.ok) {
     const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
+      payload && typeof payload === "object" && "error" in payload
+        ? String(payload.error)
         : `Request failed (${response.status})`;
     throw new ApiError(message, response.status);
   }
-  return data as T;
+  return payload as T;
 }
 
 export interface Policy {
@@ -137,7 +136,7 @@ export interface RequestLog {
   createdAt: string;
 }
 
-export interface AbusiveIp {
+interface AbusiveIp {
   ipAddress: string;
   country: string | null;
   totalRequests: number;
@@ -192,8 +191,7 @@ export interface CheckResult {
 export const api = {
   health: () => request<{ status: string }>("/health"),
 
-  whoami: (apiKey: string) =>
-    request<{ email: string; role: Role; tenantId: string }>("/whoami", { apiKey }),
+  whoami: (apiKey: string) => request<{ email: string; role: Role; tenantId: string }>("/whoami", { apiKey }),
 
   /** Pass a super_admin key to add a user to an existing tenant. */
   register: (email: string, tenantId: string, adminKey?: string) =>
@@ -204,12 +202,9 @@ export const api = {
     }),
 
   policies: (tenantId: string, apiKey: string) =>
-    request<{ policies: Policy[] }>("/config", { apiKey, query: { tenantId } }).then(
-      (r) => r.policies,
-    ),
+    request<{ policies: Policy[] }>("/config", { apiKey, query: { tenantId } }).then((r) => r.policies),
 
-  savePolicy: (policy: Policy, apiKey: string) =>
-    request("/config", { method: "POST", body: policy, apiKey }),
+  savePolicy: (policy: Policy, apiKey: string) => request("/config", { method: "POST", body: policy, apiKey }),
 
   deletePolicy: (tenantId: string, route: string, apiKey: string) =>
     request("/config", { method: "DELETE", apiKey, query: { tenantId, route } }),
@@ -219,22 +214,22 @@ export const api = {
 
   /** Never throws for 429: a blocked request is a normal answer. */
   async check(tenantId: string, route: string, apiKey: string, identifier?: string): Promise<CheckResult> {
-    const { response, data } = await send("/check", {
+    const { response, payload } = await send("/check", {
       method: "POST",
       body: identifier ? { tenantId, route, identifier } : { tenantId, route },
       apiKey,
     });
-    const body = (data ?? {}) as Partial<CheckResult> & { error?: string };
+    const decision = (payload ?? {}) as Partial<CheckResult> & { error?: string };
     if (!response.ok && response.status !== 429) {
-      throw new ApiError(body.error ?? `Request failed (${response.status})`, response.status);
+      throw new ApiError(decision.error ?? `Request failed (${response.status})`, response.status);
     }
     return {
       status: response.status,
-      allowed: Boolean(body.allowed),
-      remaining: body.remaining ?? null,
-      retryAfter: body.retryAfter ?? 0,
-      algorithm: body.algorithm,
-      degraded: body.degraded,
+      allowed: Boolean(decision.allowed),
+      remaining: decision.remaining ?? null,
+      retryAfter: decision.retryAfter ?? 0,
+      algorithm: decision.algorithm,
+      degraded: decision.degraded,
       limit: response.headers.get("X-RateLimit-Limit"),
       reset: response.headers.get("X-RateLimit-Reset"),
     };
@@ -246,16 +241,13 @@ export const api = {
 
   systemMetrics: (apiKey: string) => request<Metrics>("/metrics", { apiKey }),
 
-  topKeys: (apiKey: string, tenantId?: string) =>
-    request<TopKey[]>("/top-keys", { apiKey, query: { tenantId } }),
+  topKeys: (apiKey: string, tenantId?: string) => request<TopKey[]>("/top-keys", { apiKey, query: { tenantId } }),
 
   securityReport: (tenantId: string, apiKey: string) =>
     request<SecurityReport>("/security-report", { apiKey, query: { tenantId } }),
 
   auditLog: (tenantId: string, apiKey: string) =>
-    request<{ auditLogs: AuditEntry[] }>("/audit-report", { apiKey, query: { tenantId } }).then(
-      (r) => r.auditLogs,
-    ),
+    request<{ auditLogs: AuditEntry[] }>("/audit-report", { apiKey, query: { tenantId } }).then((r) => r.auditLogs),
 
   keys: (apiKey: string, tenantId: string) =>
     request<{ keys: ApiKeyInfo[] }>("/keys", { apiKey, query: { tenantId } }).then((r) => r.keys),

@@ -1,16 +1,7 @@
 import { createScheduledController } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
-import {
-  call,
-  check,
-  flushQueue,
-  json,
-  makeEnv,
-  register,
-  registerAdmin,
-  savePolicy,
-} from "./helpers";
+import { call, check, flushQueue, json, makeEnv, register, registerAdmin, savePolicy } from "./helpers";
 
 describe("security report", () => {
   it("masks keys and limits top IPs to the last 24 hours", async () => {
@@ -22,10 +13,14 @@ describe("security report", () => {
     await flushQueue(env);
 
     // 30h-old row from another IP: outside the window.
-    await env.DB.prepare(`
+    await env.DB.prepare(
+      `
       INSERT INTO security_logs (tenant_id, api_key_hint, route, ip_address, allowed, remaining, retry_after, created_at)
       VALUES (?, '', '/s', '192.0.2.99', 0, 0, 0, ?)
-    `).bind(tenantId, new Date(Date.now() - 30 * 3600 * 1000).toISOString()).run();
+    `,
+    )
+      .bind(tenantId, new Date(Date.now() - 30 * 3600 * 1000).toISOString())
+      .run();
 
     const data = await json(await call(env, "GET", `/security-report?tenantId=${tenantId}`, { apiKey }));
     expect(data.topAbusiveIps.map((ip: any) => ip.ipAddress)).toEqual(["198.51.100.7"]);
@@ -47,9 +42,7 @@ describe("audit log", () => {
     await call(env, "POST", "/keys", { apiKey });
     await call(env, "DELETE", `/config?tenantId=${tenantId}&route=/a`, { apiKey });
 
-    const { auditLogs } = await json(
-      await call(env, "GET", `/audit-report?tenantId=${tenantId}`, { apiKey })
-    );
+    const { auditLogs } = await json(await call(env, "GET", `/audit-report?tenantId=${tenantId}`, { apiKey }));
     const actions = auditLogs.map((l: any) => l.action_type).reverse();
     expect(actions).toEqual([
       "policy_created",
@@ -106,10 +99,12 @@ describe("policies CRUD", () => {
     }
     // High limits are fine for O(1) algorithms.
     expect(
-      (await call(env, "POST", "/config", {
-        apiKey,
-        body: { tenantId, route: "/v", limit: 50_000, window: 60, algorithm: "fixed_window" },
-      })).status
+      (
+        await call(env, "POST", "/config", {
+          apiKey,
+          body: { tenantId, route: "/v", limit: 50_000, window: 60, algorithm: "fixed_window" },
+        })
+      ).status,
     ).toBe(200);
   });
 });
@@ -119,16 +114,23 @@ describe("scheduled retention", () => {
     const env = makeEnv();
     const { tenantId } = await register(env);
     const insert = (createdAt: string) =>
-      env.DB.prepare(`
+      env.DB.prepare(
+        `
         INSERT INTO security_logs (tenant_id, api_key_hint, route, allowed, remaining, retry_after, created_at)
         VALUES (?, '', '/ret', 1, 0, 0, ?)
-      `).bind(tenantId, createdAt).run();
+      `,
+      )
+        .bind(tenantId, createdAt)
+        .run();
     await insert(new Date(Date.now() - 40 * 86400_000).toISOString());
     await insert(new Date(Date.now() - 1 * 86400_000).toISOString());
 
     const count = async () =>
-      (await env.DB.prepare("SELECT COUNT(*) AS n FROM security_logs WHERE tenant_id = ?")
-        .bind(tenantId).first<{ n: number }>())?.n;
+      (
+        await env.DB.prepare("SELECT COUNT(*) AS n FROM security_logs WHERE tenant_id = ?")
+          .bind(tenantId)
+          .first<{ n: number }>()
+      )?.n;
 
     // Unset → nothing deleted.
     await worker.scheduled(createScheduledController(), env);

@@ -9,11 +9,11 @@ const stateDir = process.env.E2E_STATE_DIR;
 const port = process.env.E2E_API_PORT ?? "8799";
 if (!stateDir) throw new Error("E2E_STATE_DIR is not set");
 
-execFileSync(
-  "npx",
-  ["wrangler", "d1", "migrations", "apply", "edge-limiter-db", "--local", "--persist-to", stateDir],
-  { cwd: root, stdio: "inherit", env: { ...process.env, CI: "1" } },
-);
+execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "edge-limiter-db", "--local", "--persist-to", stateDir], {
+  cwd: root,
+  stdio: "inherit",
+  env: { ...process.env, CI: "1" },
+});
 
 const child = spawn(
   "npx",

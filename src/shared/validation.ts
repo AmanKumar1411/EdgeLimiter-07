@@ -11,6 +11,7 @@ export const MAX_ROUTE_LENGTH = 256;
 export const MAX_IDENTIFIER_LENGTH = 256;
 const MAX_EMAIL_LENGTH = 254;
 
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

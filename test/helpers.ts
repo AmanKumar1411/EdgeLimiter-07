@@ -1,9 +1,4 @@
-import {
-  createExecutionContext,
-  createMessageBatch,
-  getQueueResult,
-  waitOnExecutionContext,
-} from "cloudflare:test";
+import { createExecutionContext, createMessageBatch, getQueueResult, waitOnExecutionContext } from "cloudflare:test";
 import { env as baseEnv } from "cloudflare:workers";
 import worker from "../src/index";
 import type { Env } from "../src/shared/env";
@@ -55,7 +50,7 @@ export async function call(
     apiKey?: string;
     ip?: string;
     headers?: Record<string, string>;
-  } = {}
+  } = {},
 ) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -67,12 +62,7 @@ export async function call(
   const request = new Request(`http://edge.test${path}`, {
     method,
     headers,
-    body:
-      opts.body === undefined
-        ? undefined
-        : typeof opts.body === "string"
-          ? opts.body
-          : JSON.stringify(opts.body),
+    body: opts.body === undefined ? undefined : typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body),
   });
 
   const ctx = createExecutionContext();
@@ -89,7 +79,7 @@ export async function register(
   env: Env,
   tenantId = unique("t"),
   email = `${unique("u")}@example.com`,
-  adminKey?: string
+  adminKey?: string,
 ) {
   const res = await call(env, "POST", "/register", {
     body: { email, tenantId },
@@ -104,9 +94,7 @@ export async function register(
 
 export async function registerAdmin(env: Env) {
   const account = await register(env, unique("admin"));
-  await env.DB.prepare(`UPDATE users SET role = 'super_admin' WHERE email = ?`)
-    .bind(account.email)
-    .run();
+  await env.DB.prepare(`UPDATE users SET role = 'super_admin' WHERE email = ?`).bind(account.email).run();
   return account;
 }
 
@@ -119,7 +107,7 @@ export async function savePolicy(
     limit: number;
     window: number;
     algorithm?: string;
-  }
+  },
 ) {
   const res = await call(env, "POST", "/config", {
     apiKey,
@@ -130,13 +118,7 @@ export async function savePolicy(
   }
 }
 
-export function check(
-  env: Env,
-  apiKey: string,
-  tenantId: string,
-  route: string,
-  extra: Record<string, unknown> = {}
-) {
+export function check(env: Env, apiKey: string, tenantId: string, route: string, extra: Record<string, unknown> = {}) {
   return call(env, "POST", "/check", {
     apiKey,
     body: { tenantId, route, ...extra },

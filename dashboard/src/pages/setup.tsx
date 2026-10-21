@@ -14,7 +14,17 @@ import { useApi } from "@/lib/use-api";
 
 const STARTER = { route: "/api/hello", limit: 10, window: 60, algorithm: "sliding_window" } as const;
 
-function Step({ number, done, title, children }: { number: number; done: boolean; title: string; children: ReactNode }) {
+function Step({
+  number,
+  done,
+  title,
+  children,
+}: {
+  number: number;
+  done: boolean;
+  title: string;
+  children: ReactNode;
+}) {
   return (
     <li className="flex gap-3">
       <span
@@ -41,7 +51,11 @@ export function Setup() {
   const { tenantId, session, basePath } = useTenant();
   const policies = useApi(`policies:${tenantId}:${session.apiKey}`, () => api.policies(tenantId, session.apiKey));
   // Poll so the first request appears as soon as the queue writes it (~5s).
-  const report = useApi(`securityReport:${tenantId}:${session.apiKey}`, () => api.securityReport(tenantId, session.apiKey), 3_000);
+  const report = useApi(
+    `securityReport:${tenantId}:${session.apiKey}`,
+    () => api.securityReport(tenantId, session.apiKey),
+    3_000,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -91,8 +105,8 @@ export function Setup() {
           {!route ? (
             <div className="space-y-3">
               <p>
-                Requests are checked against a limit, so add one first. A good starter: {STARTER.limit} requests per minute
-                on <span className="font-mono text-foreground">{STARTER.route}</span>.
+                Requests are checked against a limit, so add one first. A good starter: {STARTER.limit} requests per
+                minute on <span className="font-mono text-foreground">{STARTER.route}</span>.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button variant="primary" onClick={createStarterLimit} disabled={busy || policies.loading}>
@@ -105,9 +119,7 @@ export function Setup() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p>
-                Run this from a terminal or your backend. Your key is filled in when you copy.
-              </p>
+              <p>Run this from a terminal or your backend. Your key is filled in when you copy.</p>
               <CheckSnippet tenantId={tenantId} route={route} apiKey={session.apiKey} />
               <Button onClick={sendTestRequest} disabled={busy}>
                 Or send one from the browser

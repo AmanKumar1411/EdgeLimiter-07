@@ -36,7 +36,7 @@ function preview(route: string, limit: number, window: number, algorithm: Algori
   return `${rule} Beyond that they get 429 with Retry-After.`;
 }
 
-export function LimitForm({
+function LimitForm({
   initial,
   existingRoutes,
   onSaved,
@@ -164,13 +164,11 @@ export function LimitForm({
 
         <div className="rounded bg-muted px-3 py-2.5 text-sm" aria-live="polite">
           <div className="text-xs font-medium text-muted-foreground">What this does</div>
-          <p className="mt-0.5">
-            {problem ?? preview(trimmedRoute, Number(limit), window, algorithm)}
-          </p>
+          <p className="mt-0.5">{problem ?? preview(trimmedRoute, Number(limit), window, algorithm)}</p>
           {!problem && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Everyone calling this route shares the budget. Send an <code className="font-mono">identifier</code>{" "}
-              (user ID, IP) with /check to give each end user their own.
+              Everyone calling this route shares the budget. Send an <code className="font-mono">identifier</code> (user
+              ID, IP) with /check to give each end user their own.
             </p>
           )}
         </div>
@@ -262,9 +260,7 @@ export function Limits() {
 
       <div className="mb-4 space-y-2 empty:hidden">
         {notice && <SuccessMessage message={notice} />}
-        {(error ?? policies.error) && (
-          <ErrorMessage message={(error ?? policies.error)!} onRetry={policies.reload} />
-        )}
+        {(error ?? policies.error) && <ErrorMessage message={(error ?? policies.error)!} onRetry={policies.reload} />}
       </div>
 
       <Card>
@@ -325,7 +321,12 @@ export function Limits() {
                     </Td>
                     <Td>
                       <div className="flex justify-end gap-1.5">
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(policy)} aria-label={`Edit ${policy.route}`}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditing(policy)}
+                          aria-label={`Edit ${policy.route}`}
+                        >
                           <Pencil aria-hidden />
                           <span className="hidden sm:inline">Edit</span>
                         </Button>

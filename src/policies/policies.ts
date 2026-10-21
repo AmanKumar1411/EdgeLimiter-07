@@ -60,8 +60,8 @@ export function parseStoredPolicy(raw: string): Policy | null {
     if (!Number.isFinite(limit) || limit < 1) return null;
     if (!Number.isFinite(window) || window < 1) return null;
     return {
-      tenantId: String(parsed.tenantId ?? ""),
-      route: String(parsed.route ?? ""),
+      tenantId: typeof parsed.tenantId === "string" ? parsed.tenantId : "",
+      route: typeof parsed.route === "string" ? parsed.route : "",
       limit,
       window,
       algorithm: isAlgorithm(parsed.algorithm) ? parsed.algorithm : "sliding_window",

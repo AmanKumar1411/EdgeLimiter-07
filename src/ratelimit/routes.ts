@@ -1,7 +1,15 @@
 import { Hono } from "hono";
 import { writeAudit } from "../analytics/audit";
 import { recordCheck } from "../analytics/events";
-import { actorFor, authenticate, canAccessTenant, findActiveOwner, maskApiKey, MAX_API_KEY_LENGTH, type KeyOwner } from "../keys/keys";
+import {
+  actorFor,
+  authenticate,
+  canAccessTenant,
+  findActiveOwner,
+  maskApiKey,
+  MAX_API_KEY_LENGTH,
+  type KeyOwner,
+} from "../keys/keys";
 import { parseStoredPolicy, policyKey, readPolicy } from "../policies/policies";
 import { readConfig } from "../shared/config";
 import type { AppEnv } from "../shared/env";
@@ -48,7 +56,11 @@ rateLimitRoutes.post("/check", async (c) => {
     const headers = { "X-EdgeLimiter-Degraded": reason };
     return failClosed
       ? c.json({ error: "Rate limiter unavailable", degraded: reason }, 503, headers)
-      : c.json({ tenant: tenantId, route, allowed: true, remaining: null, retryAfter: 0, degraded: reason }, 200, headers);
+      : c.json(
+          { tenant: tenantId, route, allowed: true, remaining: null, retryAfter: 0, degraded: reason },
+          200,
+          headers,
+        );
   };
 
   const body = await readJsonObject(c);
@@ -95,9 +107,9 @@ rateLimitRoutes.post("/check", async (c) => {
   const policy = parseStoredPolicy(read.raw);
   if (!policy) return reject(500, "Malformed policy config. Please recreate via /config.", "config_invalid");
 
-  let result: LimitResult;
+  let decision: LimitResult;
   try {
-    result = await limiter(c.env, counterName(tenantId, route, identifier)).check({
+    decision = await limiter(c.env, counterName(tenantId, route, identifier)).check({
       limit: policy.limit,
       window: policy.window,
       algorithm: policy.algorithm,
@@ -107,8 +119,8 @@ rateLimitRoutes.post("/check", async (c) => {
     return degraded("limiter_unavailable");
   }
 
-  record(result.allowed, result.remaining, result.retryAfter, result.allowed ? null : "rate_limit_exceeded");
-  if (result.firstBlock) {
+  record(decision.allowed, decision.remaining, decision.retryAfter, decision.allowed ? null : "rate_limit_exceeded");
+  if (decision.firstBlock) {
     writeAudit(c.env, c.executionCtx, {
       tenantId,
       apiKey,
@@ -122,8 +134,8 @@ rateLimitRoutes.post("/check", async (c) => {
   try {
     // Blobs carry the key ID, never the key.
     c.env.ANALYTICS.writeDataPoint({
-      blobs: [String(owner.key_id), tenantId, route, result.algorithm],
-      doubles: [result.allowed ? 1 : 0],
+      blobs: [String(owner.key_id), tenantId, route, decision.algorithm],
+      doubles: [decision.allowed ? 1 : 0],
       indexes: [tenantId],
     });
   } catch (err) {
@@ -136,18 +148,18 @@ rateLimitRoutes.post("/check", async (c) => {
       tenant: tenantId,
       route,
       configKey,
-      allowed: result.allowed,
-      remaining: result.remaining,
-      retryAfter: result.retryAfter,
-      algorithm: result.algorithm,
+      allowed: decision.allowed,
+      remaining: decision.remaining,
+      retryAfter: decision.retryAfter,
+      algorithm: decision.algorithm,
     },
-    result.allowed ? 200 : 429,
+    decision.allowed ? 200 : 429,
     {
       "X-RateLimit-Limit": String(policy.limit),
-      "X-RateLimit-Remaining": String(result.remaining),
+      "X-RateLimit-Remaining": String(decision.remaining),
       // When blocked: when the next request will be allowed (matches Retry-After).
-      "X-RateLimit-Reset": String(now + (result.retryAfter > 0 ? result.retryAfter : policy.window)),
-      ...(result.retryAfter > 0 && { "Retry-After": String(result.retryAfter) }),
+      "X-RateLimit-Reset": String(now + (decision.retryAfter > 0 ? decision.retryAfter : policy.window)),
+      ...(decision.retryAfter > 0 && { "Retry-After": String(decision.retryAfter) }),
     },
   );
 });

@@ -6,7 +6,7 @@
  change, or counters stored by a previous deploy would be ignored.
 */
 
-export interface Rule {
+interface Rule {
   limit: number;
   windowSeconds: number;
 }
@@ -30,11 +30,7 @@ export interface LimiterState {
 }
 
 /** `state` is null when nothing needs to be written back. */
-export type Check = (
-  state: LimiterState,
-  rule: Rule,
-  nowMs: number,
-) => Decision & { state: LimiterState | null };
+export type Check = (state: LimiterState, rule: Rule, nowMs: number) => Decision & { state: LimiterState | null };
 
 export const slidingWindow: Check = ({ timestamps = [] }, { limit, windowSeconds }, nowMs) => {
   const now = Math.floor(nowMs / 1000);

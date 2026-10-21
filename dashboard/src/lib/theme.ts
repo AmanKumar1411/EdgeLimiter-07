@@ -15,10 +15,7 @@ export function useTheme() {
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () =>
-      document.documentElement.classList.toggle(
-        "dark",
-        theme === "dark" || (theme === "system" && media.matches),
-      );
+      document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && media.matches));
     apply();
 
     if (theme === "system") localStorage.removeItem(STORAGE_KEY);

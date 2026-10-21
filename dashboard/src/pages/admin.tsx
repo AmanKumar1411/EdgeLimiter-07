@@ -128,13 +128,21 @@ export function Tenants() {
 
   return (
     <>
-      <PageHeader title="Tenants" description="Tenants with traffic among the busiest keys. Open any other tenant by ID." />
+      <PageHeader
+        title="Tenants"
+        description="Tenants with traffic among the busiest keys. Open any other tenant by ID."
+      />
       {topKeys.error && <ErrorMessage message={topKeys.error} onRetry={topKeys.reload} className="mb-4" />}
 
       <Card className="mb-4">
         <form onSubmit={open} className="flex flex-wrap items-end gap-2 p-4">
           <Field label="Open a tenant by ID" className="w-full sm:w-72">
-            <Input value={openId} onChange={(e) => setOpenId(e.target.value)} className="font-mono" placeholder="acme" />
+            <Input
+              value={openId}
+              onChange={(e) => setOpenId(e.target.value)}
+              className="font-mono"
+              placeholder="acme"
+            />
           </Field>
           <Button type="submit">
             Open <ArrowRight aria-hidden />
@@ -156,7 +164,11 @@ export function Tenants() {
         {topKeys.loading && !topKeys.data ? (
           <SkeletonRows />
         ) : !rows.length ? (
-          <EmptyState icon={Building2} title="No tenants with traffic" description="Tenants appear here once they send requests." />
+          <EmptyState
+            icon={Building2}
+            title="No tenants with traffic"
+            description="Tenants appear here once they send requests."
+          />
         ) : (
           <>
             <Table>

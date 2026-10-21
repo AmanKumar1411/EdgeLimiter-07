@@ -5,8 +5,8 @@ export const MAX_BODY_BYTES = 16 * 1024;
 /** The parsed JSON object body, or null when missing, malformed or not an object. */
 export async function readJsonObject(c: Context): Promise<Record<string, unknown> | null> {
   try {
-    const body = await c.req.json();
-    return body && typeof body === "object" && !Array.isArray(body) ? body : null;
+    const body: unknown = await c.req.json();
+    return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
   } catch (err) {
     // Streamed (no Content-Length) bodies over the limit surface here;
     // rethrow so the bodyLimit middleware answers 413, not "invalid JSON".

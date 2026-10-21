@@ -6,18 +6,13 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <title>EdgeLimiter</title>
     <script>
       // Apply the theme before first paint (see src/lib/theme.ts).
       try {
         const theme = localStorage.getItem("edge-limiter-theme");
-        const dark =
-          theme === "dark" ||
-          (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        const dark = theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
       } catch {}
     </script>

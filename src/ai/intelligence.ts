@@ -95,14 +95,16 @@ async function refreshWithAi(
 ) {
   const intelligence = (await askAi(env, tenantId, logs, ips, rules)) ?? rules;
   try {
-    await env.DB.prepare(`
+    await env.DB.prepare(
+      `
       INSERT INTO ai_insights (tenant_id, last_log_id, payload, created_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(tenant_id) DO UPDATE SET
         last_log_id = excluded.last_log_id,
         payload = excluded.payload,
         created_at = excluded.created_at
-    `)
+    `,
+    )
       .bind(tenantId, latestLogId, JSON.stringify(intelligence), intelligence.generatedAt)
       .run();
   } catch (err) {
@@ -118,7 +120,7 @@ async function askAi(
   rules: Intelligence,
 ): Promise<Intelligence | null> {
   try {
-    const result = await withTimeout(
+    const response = await withTimeout(
       env.AI!.run(AI_MODEL, {
         messages: [
           {
@@ -161,7 +163,7 @@ Return only valid JSON. No markdown, no code fences, no extra text.
       readConfig(env).aiTimeoutMs,
     );
 
-    const answer = parseAnswer(responseText(result));
+    const answer = parseAnswer(responseText(response));
     if (!answer.summary) return null;
 
     // The rule-based severity is a floor: the AI may raise it, never lower
@@ -258,30 +260,39 @@ function responseText(result: unknown): string {
   return typeof text === "string" ? text.trim() : "";
 }
 
+const text = (value: unknown, fallback: string) => (typeof value === "string" && value ? value : fallback);
+
 function parseAnswer(raw: string): { summary?: string; abuseScore?: string; recommendation?: string } {
-  let parsed: Record<string, unknown>;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.replace(/```json/gi, "").replace(/```/g, "").trim());
+    parsed = JSON.parse(
+      raw
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim(),
+    );
   } catch {
     return {};
   }
+  if (!parsed || typeof parsed !== "object") return {};
+  const answer = parsed as Record<string, unknown>;
 
   let summary: string | undefined;
-  if (typeof parsed.summary === "string") {
-    summary = parsed.summary.trim();
-  } else if (parsed.summary && typeof parsed.summary === "object") {
+  if (typeof answer.summary === "string") {
+    summary = answer.summary.trim();
+  } else if (answer.summary && typeof answer.summary === "object") {
     // Some models return the summary as structured fields.
-    const s = parsed.summary as Record<string, unknown>;
+    const s = answer.summary as Record<string, unknown>;
     summary =
-      `IP ${s.ip || "Unknown"} from ${s.country || "Unknown"} ` +
-      `is repeatedly targeting route "${s.route || "Unknown"}". ` +
-      `${s.behavior || "Suspicious repeated abuse detected."}`;
+      `IP ${text(s.ip, "Unknown")} from ${text(s.country, "Unknown")} ` +
+      `is repeatedly targeting route "${text(s.route, "Unknown")}". ` +
+      text(s.behavior, "Suspicious repeated abuse detected.");
   }
 
   return {
     summary,
-    abuseScore: typeof parsed.abuseScore === "string" ? parsed.abuseScore.trim() : undefined,
-    recommendation: typeof parsed.recommendation === "string" ? parsed.recommendation.trim() : undefined,
+    abuseScore: typeof answer.abuseScore === "string" ? answer.abuseScore.trim() : undefined,
+    recommendation: typeof answer.recommendation === "string" ? answer.recommendation.trim() : undefined,
   };
 }
 

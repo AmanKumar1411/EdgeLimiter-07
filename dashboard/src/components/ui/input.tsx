@@ -1,10 +1,4 @@
-import {
-  cloneElement,
-  useId,
-  type InputHTMLAttributes,
-  type ReactElement,
-  type SelectHTMLAttributes,
-} from "react";
+import { cloneElement, useId, type InputHTMLAttributes, type ReactElement, type SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/format";
 
 const control =

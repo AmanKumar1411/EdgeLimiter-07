@@ -138,8 +138,8 @@ export const SYSTEM_PREFIX = "\u0000system:";
 /** Fixed-window throttle for internal use (e.g. sign-ups). Fails open. */
 export async function throttle(env: Env, name: string, limit: number, window: number) {
   try {
-    const result = await limiter(env, SYSTEM_PREFIX + name).check({ limit, window, algorithm: "fixed_window" });
-    return result.allowed;
+    const decision = await limiter(env, SYSTEM_PREFIX + name).check({ limit, window, algorithm: "fixed_window" });
+    return decision.allowed;
   } catch (err) {
     log.error("throttle_unavailable", err, { name });
     return true;

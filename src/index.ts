@@ -29,13 +29,21 @@ app.use(
   "*",
   cors({
     origin: (origin, c) => {
-      const allowed = readConfig(c.env).corsOrigins;
-      return allowed === "*" ? "*" : allowed.includes(origin) ? origin : null;
+      // Hono types this callback's context without the app's bindings.
+      const allowed = readConfig(c.env as Env).corsOrigins;
+      if (allowed === "*") return "*";
+      return allowed.includes(origin) ? origin : null;
     },
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "x-api-key"],
     // Without this, browsers hide the rate-limit headers from cross-origin JS.
-    exposeHeaders: ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After", "X-EdgeLimiter-Degraded"],
+    exposeHeaders: [
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset",
+      "Retry-After",
+      "X-EdgeLimiter-Degraded",
+    ],
   }),
 );
 

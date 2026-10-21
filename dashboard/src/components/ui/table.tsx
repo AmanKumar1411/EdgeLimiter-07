@@ -15,7 +15,10 @@ export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>)
 export function Th({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={cn("h-9 whitespace-nowrap border-b px-4 text-left text-xs font-medium text-muted-foreground", className)}
+      className={cn(
+        "h-9 whitespace-nowrap border-b px-4 text-left text-xs font-medium text-muted-foreground",
+        className,
+      )}
       {...props}
     />
   );
@@ -40,13 +43,7 @@ export function usePagination<T>(items: T[], pageSize = 10) {
   };
 }
 
-export function Pagination({
-  page,
-  pageCount,
-  total,
-  pageSize,
-  setPage,
-}: ReturnType<typeof usePagination>) {
+export function Pagination({ page, pageCount, total, pageSize, setPage }: ReturnType<typeof usePagination>) {
   if (total <= pageSize) return null;
   const first = page * pageSize + 1;
   const last = Math.min(total, first + pageSize - 1);

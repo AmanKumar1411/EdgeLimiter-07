@@ -39,10 +39,12 @@ export function systemTotals(env: Env) {
 }
 
 export function tenantTotals(env: Env, tenantId: string) {
-  return env.DB.prepare(`
+  return env.DB.prepare(
+    `
     SELECT SUM(total_requests) AS total_requests, SUM(blocked_requests) AS blocked_requests
     FROM logs_summary WHERE tenant_id = ?
-  `)
+  `,
+  )
     .bind(tenantId)
     .first<Totals>();
 }
@@ -54,25 +56,29 @@ export function keyTotals(env: Env, apiKeyId: number) {
 }
 
 export function topAbuser(env: Env) {
-  return env.DB.prepare(`
+  return env.DB.prepare(
+    `
     SELECT ak.key_hint, ls.total_requests, ls.blocked_requests
     FROM logs_summary ls
     LEFT JOIN api_keys ak ON ak.id = ls.api_key_id
     ORDER BY ls.blocked_requests DESC
     LIMIT 1
-  `).first<Totals & { key_hint: string | null }>();
+  `,
+  ).first<Totals & { key_hint: string | null }>();
 }
 
 /** Top 10 keys by blocked requests; `tenantId` null means all tenants. */
 export async function topKeys(env: Env, tenantId: string | null) {
-  const { results } = await env.DB.prepare(`
+  const { results } = await env.DB.prepare(
+    `
     SELECT ak.key_hint, ls.tenant_id, ls.total_requests, ls.blocked_requests
     FROM logs_summary ls
     LEFT JOIN api_keys ak ON ak.id = ls.api_key_id
     WHERE ?1 IS NULL OR ls.tenant_id = ?1
     ORDER BY ls.blocked_requests DESC
     LIMIT 10
-  `)
+  `,
+  )
     .bind(tenantId)
     .all<{ key_hint: string | null; tenant_id: string | null; total_requests: number; blocked_requests: number }>();
 
@@ -96,10 +102,12 @@ export async function runDailyMaintenance(env: Env) {
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
     let deleted = 0;
     for (let i = 0; i < 50; i++) {
-      const { meta } = await env.DB.prepare(`
+      const { meta } = await env.DB.prepare(
+        `
         DELETE FROM security_logs
         WHERE id IN (SELECT id FROM security_logs WHERE created_at < ? LIMIT 5000)
-      `)
+      `,
+      )
         .bind(cutoff)
         .run();
       deleted += meta.changes;

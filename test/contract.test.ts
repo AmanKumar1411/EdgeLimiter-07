@@ -1,14 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  call,
-  check,
-  flushQueue,
-  json,
-  makeEnv,
-  register,
-  registerAdmin,
-  savePolicy,
-} from "./helpers";
+import { call, check, flushQueue, json, makeEnv, register, registerAdmin, savePolicy } from "./helpers";
 
 /*
  Public API contract: status codes and response shapes of every endpoint
@@ -55,7 +46,7 @@ describe("API contract", () => {
       await call(env, "POST", "/config", {
         apiKey,
         body: { tenantId, route: "/c", limit: 1, window: 60 },
-      })
+      }),
     );
     expect(keys(saved)).toEqual(["config", "message", "success"]);
     expect(keys(saved.config)).toEqual(["algorithm", "limit", "route", "tenantId", "window"]);
@@ -80,9 +71,10 @@ describe("API contract", () => {
     expect(blocked.headers.get("Retry-After")).not.toBeNull();
     await flushQueue(env);
 
-    expect(
-      await shape(await call(env, "POST", "/reset", { apiKey, body: { tenantId, route: "/c" } }))
-    ).toEqual({ status: 200, keys: ["message", "route", "success", "tenantId"] });
+    expect(await shape(await call(env, "POST", "/reset", { apiKey, body: { tenantId, route: "/c" } }))).toEqual({
+      status: 200,
+      keys: ["message", "route", "success", "tenantId"],
+    });
 
     for (const [path, expected] of [
       ["/client/metrics", ["blockRate", "blockedRequests", "totalRequests"]],
@@ -143,13 +135,15 @@ describe("API contract", () => {
     const list = await json(await call(env, "GET", "/keys", { apiKey }));
     expect(keys(list)).toEqual(["keys"]);
     expect(keys(list.keys[0])).toEqual(["createdAt", "current", "email", "hint", "id", "revokedAt", "status"]);
-    expect(
-      await shape(await call(env, "POST", `/keys/${created.id}/revoke`, { apiKey }))
-    ).toEqual({ status: 200, keys: ["current", "id", "status", "success"] });
+    expect(await shape(await call(env, "POST", `/keys/${created.id}/revoke`, { apiKey }))).toEqual({
+      status: 200,
+      keys: ["current", "id", "status", "success"],
+    });
 
-    expect(
-      await shape(await call(env, "DELETE", `/config?tenantId=${tenantId}&route=/c`, { apiKey }))
-    ).toEqual({ status: 200, keys: ["message", "success"] });
+    expect(await shape(await call(env, "DELETE", `/config?tenantId=${tenantId}&route=/c`, { apiKey }))).toEqual({
+      status: 200,
+      keys: ["message", "success"],
+    });
   });
 
   it("admin endpoints", async () => {
@@ -180,7 +174,10 @@ describe("API contract", () => {
 
     const cases: [string, Response][] = [
       ["400 bad json", await call(env, "POST", "/config", { apiKey, body: "{" })],
-      ["400 validation", await call(env, "POST", "/config", { apiKey, body: { tenantId, route: "", limit: 1, window: 1 } })],
+      [
+        "400 validation",
+        await call(env, "POST", "/config", { apiKey, body: { tenantId, route: "", limit: 1, window: 1 } }),
+      ],
       ["401 missing key", await call(env, "GET", "/whoami")],
       ["401 bad key", await call(env, "GET", "/whoami", { apiKey: "nope" })],
       ["403 other tenant", await call(env, "GET", `/audit-report?tenantId=${other.tenantId}`, { apiKey })],

@@ -41,9 +41,15 @@ async function seed() {
   execFileSync(
     "npx",
     [
-      "wrangler", "d1", "execute", "edge-limiter-db", "--local",
-      "--persist-to", process.env.E2E_STATE_DIR!,
-      "--command", `UPDATE users SET role = 'super_admin' WHERE email = 'admin-${run}@example.com'`,
+      "wrangler",
+      "d1",
+      "execute",
+      "edge-limiter-db",
+      "--local",
+      "--persist-to",
+      process.env.E2E_STATE_DIR!,
+      "--command",
+      `UPDATE users SET role = 'super_admin' WHERE email = 'admin-${run}@example.com'`,
     ],
     { cwd: ROOT, stdio: "ignore" },
   );

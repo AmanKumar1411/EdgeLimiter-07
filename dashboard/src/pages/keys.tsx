@@ -45,8 +45,8 @@ export function Keys() {
     setBusy(key.id);
     setError(undefined);
     try {
-      const result = await api.revokeKey(key.id, session.apiKey);
-      if (result.current) {
+      const { current } = await api.revokeKey(key.id, session.apiKey);
+      if (current) {
         sessionStore.clear();
         navigate(loginPath(session.role), { replace: true });
         return;

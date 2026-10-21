@@ -17,12 +17,7 @@ function at(ms: number) {
   vi.spyOn(Date, "now").mockReturnValue(ms);
 }
 
-async function decide(
-  env: ReturnType<typeof makeEnv>,
-  apiKey: string,
-  tenantId: string,
-  route: string
-) {
+async function decide(env: ReturnType<typeof makeEnv>, apiKey: string, tenantId: string, route: string) {
   const res = await check(env, apiKey, tenantId, route);
   const body = await json(res);
   return {

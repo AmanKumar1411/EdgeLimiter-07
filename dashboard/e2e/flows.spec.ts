@@ -38,9 +38,15 @@ function promoteToAdmin(email: string) {
   execFileSync(
     "npx",
     [
-      "wrangler", "d1", "execute", "edge-limiter-db", "--local",
-      "--persist-to", process.env.E2E_STATE_DIR!,
-      "--command", `UPDATE users SET role = 'super_admin' WHERE email = '${email}'`,
+      "wrangler",
+      "d1",
+      "execute",
+      "edge-limiter-db",
+      "--local",
+      "--persist-to",
+      process.env.E2E_STATE_DIR!,
+      "--command",
+      `UPDATE users SET role = 'super_admin' WHERE email = '${email}'`,
     ],
     { cwd: ROOT, stdio: "ignore" },
   );
@@ -207,7 +213,9 @@ test("admin: client key refused → platform overview → tenant drill-down → 
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText(tenant);
   await expect(page.getByRole("link", { name: /^Requests/ })).toContainText("5");
   // Another tenant's /check needs its own key, so no Test request page.
-  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Test request" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Test request" })).toHaveCount(
+    0,
+  );
 
   await nav(page, "API keys");
   await expect(page.getByRole("cell", { name: `owner-${run}@example.com` }).first()).toBeVisible();

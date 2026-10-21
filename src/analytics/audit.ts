@@ -15,10 +15,12 @@ export interface AuditEntry {
 /** Best-effort: runs after the response; only a masked key is stored. */
 export function writeAudit(env: Env, ctx: Background, entry: AuditEntry) {
   const write = async () => {
-    await env.DB.prepare(`
+    await env.DB.prepare(
+      `
       INSERT INTO audit_logs (tenant_id, api_key_hint, route, actor, action_type, message, severity, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    `,
+    )
       .bind(
         entry.tenantId,
         entry.apiKey ? maskApiKey(entry.apiKey) : null,

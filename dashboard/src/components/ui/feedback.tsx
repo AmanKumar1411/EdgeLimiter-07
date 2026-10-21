@@ -71,7 +71,10 @@ export function ErrorMessage({
 /** Confirmation that an action worked. */
 export function SuccessMessage({ message }: { message: string }) {
   return (
-    <div role="status" className="flex items-center gap-2 rounded border border-success/30 bg-success/5 px-3 py-2.5 text-sm">
+    <div
+      role="status"
+      className="flex items-center gap-2 rounded border border-success/30 bg-success/5 px-3 py-2.5 text-sm"
+    >
       <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
       {message}
     </div>

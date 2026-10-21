@@ -40,14 +40,16 @@ async function findOwner(env: Env, apiKey: string) {
   if (!apiKey || apiKey.length > MAX_API_KEY_LENGTH) return null;
   const keyHash = await hashApiKey(apiKey);
 
-  const row = await env.DB.prepare(`
+  const row = await env.DB.prepare(
+    `
     SELECT u.id AS user_id, u.email, u.role, u.tenant_id,
            a.id AS key_id, a.key_hint, a.status, a.key_hash
     FROM api_keys a
     INNER JOIN users u ON u.id = a.user_id
     WHERE a.key_hash = ?1 OR a.legacy_key = ?2
     LIMIT 1
-  `)
+  `,
+  )
     .bind(keyHash, apiKey)
     .first<KeyOwner & { key_hash: string | null }>();
   if (!row) return null;

@@ -1,15 +1,7 @@
 import { env as realEnv } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/shared/env";
-import {
-  call,
-  check,
-  flushQueue,
-  json,
-  makeEnv,
-  register,
-  savePolicy,
-} from "./helpers";
+import { call, check, flushQueue, json, makeEnv, register, savePolicy } from "./helpers";
 
 const failingKv = {
   get: async () => {
@@ -59,12 +51,7 @@ describe("fail-open / fail-closed", () => {
 
     it(`${name} failure → 503 with RATE_LIMIT_FAIL_MODE=closed`, async () => {
       const { env, tenantId, apiKey } = await setup();
-      const res = await check(
-        { ...env, ...override, RATE_LIMIT_FAIL_MODE: "closed" } as Env,
-        apiKey,
-        tenantId,
-        "/r"
-      );
+      const res = await check({ ...env, ...override, RATE_LIMIT_FAIL_MODE: "closed" } as Env, apiKey, tenantId, "/r");
       expect(res.status).toBe(503);
       expect(res.headers.get("X-EdgeLimiter-Degraded")).toBe(reason);
     });
@@ -167,7 +154,11 @@ describe("Workers AI security intelligence (mocked)", () => {
 
     const variants: Record<string, Ai | undefined> = {
       unbound: undefined,
-      throws: { run: vi.fn(async () => { throw new Error("AI down"); }) } as unknown as Ai,
+      throws: {
+        run: vi.fn(async () => {
+          throw new Error("AI down");
+        }),
+      } as unknown as Ai,
       hangs: { run: vi.fn(() => new Promise(() => {})) } as unknown as Ai,
       garbage: { run: vi.fn(async () => ({ response: "not json at all" })) } as unknown as Ai,
     };

@@ -39,10 +39,10 @@ export interface TrafficBar {
 export function TrafficChart({ bars }: { bars: TrafficBar[] }) {
   const max = Math.max(1, ...bars.map((b) => b.allowed + b.blocked));
   const ticks = [...new Set([bars[0], bars[Math.floor(bars.length / 2)], bars[bars.length - 1]])];
-  const totals = bars.reduce(
-    (sum, b) => ({ allowed: sum.allowed + b.allowed, blocked: sum.blocked + b.blocked }),
-    { allowed: 0, blocked: 0 },
-  );
+  const totals = bars.reduce((sum, b) => ({ allowed: sum.allowed + b.allowed, blocked: sum.blocked + b.blocked }), {
+    allowed: 0,
+    blocked: 0,
+  });
 
   return (
     <figure>

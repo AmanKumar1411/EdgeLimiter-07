@@ -37,8 +37,7 @@ analyticsRoutes.get("/metrics", async (c) => {
 analyticsRoutes.get("/client/metrics", async (c) => {
   const owner = await authenticate(c);
   if (owner instanceof Response) return owner;
-  const tenantId =
-    owner.role === "super_admin" ? c.req.query("tenantId")?.trim() || owner.tenant_id : owner.tenant_id;
+  const tenantId = owner.role === "super_admin" ? c.req.query("tenantId")?.trim() || owner.tenant_id : owner.tenant_id;
   return c.json(toMetrics(tenantId ? await tenantTotals(c.env, tenantId) : null));
 });
 
@@ -78,18 +77,21 @@ analyticsRoutes.get("/security-report", async (c) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const [logs, ips] = await Promise.all([
-    c.env.DB.prepare(`
+    c.env.DB.prepare(
+      `
       SELECT id, tenant_id, api_key_hint, route, ip_address, country, colo, user_agent,
              allowed, remaining, retry_after, reason, created_at
       FROM security_logs
       WHERE tenant_id = ?
       ORDER BY created_at DESC
       LIMIT 50
-    `)
+    `,
+    )
       .bind(tenantId)
       .all<SecurityLogRow>(),
     // IPs that hit this tenant in the window, with their traffic to all tenants.
-    c.env.DB.prepare(`
+    c.env.DB.prepare(
+      `
       WITH tenant_ips AS (
         SELECT DISTINCT ip_address FROM security_logs
         WHERE tenant_id = ?1 AND created_at >= ?2 AND ip_address IS NOT NULL AND ip_address <> ''
@@ -110,7 +112,8 @@ analyticsRoutes.get("/security-report", async (c) => {
       GROUP BY l.ip_address
       ORDER BY tenant_blocked_requests DESC, blocked_requests DESC, total_requests DESC
       LIMIT 10
-    `)
+    `,
+    )
       .bind(tenantId, since)
       .all<IpRow>(),
   ]);
@@ -160,13 +163,15 @@ analyticsRoutes.get("/audit-report", async (c) => {
   if (!tenantId) return c.json({ error: "tenantId is required" }, 400);
   if (!canAccessTenant(owner, tenantId)) return c.json({ error: "Forbidden" }, 403);
 
-  const { results } = await c.env.DB.prepare(`
+  const { results } = await c.env.DB.prepare(
+    `
     SELECT id, tenant_id, api_key_hint, route, actor, action_type, message, severity, created_at
     FROM audit_logs
     WHERE tenant_id = ?
     ORDER BY created_at DESC
     LIMIT 50
-  `)
+  `,
+  )
     .bind(tenantId)
     .all();
 

@@ -83,7 +83,9 @@ export function Overview() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
           <div>
             <div className="font-medium">Finish setting up</div>
-            <p className="text-sm text-muted-foreground">Add your first limit and send a test request. It takes a minute.</p>
+            <p className="text-sm text-muted-foreground">
+              Add your first limit and send a test request. It takes a minute.
+            </p>
           </div>
           <Link to={`${basePath}/setup`} className={buttonVariants({ variant: "primary" })}>
             Get started <ArrowRight aria-hidden />
@@ -226,7 +228,11 @@ export function Overview() {
             ))}
           </ul>
         ) : (
-          <EmptyState icon={BellOff} title="No alerts" description="You'll see an entry here when a limit starts blocking requests." />
+          <EmptyState
+            icon={BellOff}
+            title="No alerts"
+            description="You'll see an entry here when a limit starts blocking requests."
+          />
         )}
       </Card>
     </>

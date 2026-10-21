@@ -179,7 +179,7 @@ function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
 }
 
 function ApiStatus() {
-  const { error, loading, data } = useApi(`health`, () => api.health(), 60_000);
+  const { error, loading, data } = useApi("health", () => api.health(), 60_000);
   const state = error ? "down" : data ? "up" : loading ? "checking" : "down";
   return (
     <span

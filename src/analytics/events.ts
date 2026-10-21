@@ -23,11 +23,7 @@ const MAX_USER_AGENT_LENGTH = 512;
 const MAX_RETRY_DELAY_SECONDS = 300;
 
 /** Queue a /check decision. Best-effort: never blocks or fails the request. */
-export function recordCheck(
-  env: Env,
-  ctx: Background,
-  event: Omit<SecurityEvent, "type" | "timestamp">,
-) {
+export function recordCheck(env: Env, ctx: Background, event: Omit<SecurityEvent, "type" | "timestamp">) {
   const message: SecurityEvent = { type: "security_log", ...event, timestamp: new Date().toISOString() };
   const send = async () => env.LOG_QUEUE.send(message);
   ctx.waitUntil(
@@ -99,13 +95,15 @@ async function fromLegacyEvent(env: Env, { apiKey, ...rest }: Record<string, unk
 }
 
 async function findLegacyKey(env: Env, apiKey: string) {
-  return env.DB.prepare(`
+  return env.DB.prepare(
+    `
     SELECT a.id AS apiKeyId, u.tenant_id AS tenantId
     FROM api_keys a
     INNER JOIN users u ON u.id = a.user_id
     WHERE a.key_hash = ?1 OR a.legacy_key = ?2
     LIMIT 1
-  `)
+  `,
+  )
     .bind(await hashApiKey(apiKey), apiKey)
     .first<{ apiKeyId: number; tenantId: string | null }>();
 }
@@ -120,9 +118,7 @@ function isSecurityEvent(event: Record<string, unknown>): event is Record<string
     Number.isFinite(event.remaining) &&
     Number.isFinite(event.retryAfter) &&
     (event.apiKeyId === null || Number.isInteger(event.apiKeyId)) &&
-    [event.apiKeyHint, event.ipAddress, event.country, event.colo, event.userAgent, event.reason].every(
-      nullableString,
-    )
+    [event.apiKeyHint, event.ipAddress, event.country, event.colo, event.userAgent, event.reason].every(nullableString)
   );
 }
 
@@ -131,13 +127,15 @@ async function store(env: Env, event: SecurityEvent | null, usage: UsageUpdate |
 
   if (event) {
     statements.push(
-      env.DB.prepare(`
+      env.DB.prepare(
+        `
         INSERT INTO security_logs (
           tenant_id, api_key_hint, route, ip_address, country, colo, user_agent,
           allowed, remaining, retry_after, reason, created_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
+      `,
+      ).bind(
         event.tenantId,
         event.apiKeyHint ?? "", // column is NOT NULL; "" means no key was sent
         event.route,
@@ -156,14 +154,16 @@ async function store(env: Env, event: SecurityEvent | null, usage: UsageUpdate |
 
   if (usage) {
     statements.push(
-      env.DB.prepare(`
+      env.DB.prepare(
+        `
         INSERT INTO logs_summary (api_key_id, tenant_id, total_requests, blocked_requests)
         VALUES (?, ?, 1, ?)
         ON CONFLICT(api_key_id) DO UPDATE SET
           total_requests   = total_requests + 1,
           blocked_requests = blocked_requests + excluded.blocked_requests,
           updated_at       = CURRENT_TIMESTAMP
-      `).bind(usage.apiKeyId, usage.tenantId, usage.blocked),
+      `,
+      ).bind(usage.apiKeyId, usage.tenantId, usage.blocked),
     );
   }
 

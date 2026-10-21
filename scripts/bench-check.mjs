@@ -11,11 +11,10 @@ const port = 8797;
 const api = `http://127.0.0.1:${port}`;
 const state = mkdtempSync(join(tmpdir(), "edgelimiter-bench-"));
 
-execFileSync(
-  "npx",
-  ["wrangler", "d1", "migrations", "apply", "edge-limiter-db", "--local", "--persist-to", state],
-  { stdio: "ignore", env: { ...process.env, CI: "1" } },
-);
+execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "edge-limiter-db", "--local", "--persist-to", state], {
+  stdio: "ignore",
+  env: { ...process.env, CI: "1" },
+});
 const worker = spawn(
   "npx",
   ["wrangler", "dev", "--local", "--persist-to", state, "--port", String(port), "--ip", "127.0.0.1"],
@@ -49,9 +48,7 @@ function percentile(sorted, p) {
 try {
   await waitForHealth();
   const tenantId = `bench-${Date.now().toString(36)}`;
-  const { apiKey } = await (
-    await post("/register", { email: `${tenantId}@example.com`, tenantId })
-  ).json();
+  const { apiKey } = await (await post("/register", { email: `${tenantId}@example.com`, tenantId })).json();
 
   for (const [algorithm, limit] of [
     ["sliding_window", 10_000],

@@ -19,14 +19,22 @@ describe("migration 0002 on legacy data", () => {
       db.prepare("INSERT INTO users (email, role, tenant_id) VALUES ('m@x.io', 'client', 'acme')"),
       db.prepare("INSERT INTO api_keys (user_id, api_key) VALUES (1, ?)").bind(key),
       db.prepare("INSERT INTO logs_summary (api_key, total_requests, blocked_requests) VALUES (?, 7, 2)").bind(key),
-      db.prepare(`
+      db
+        .prepare(
+          `
         INSERT INTO security_logs (tenant_id, api_key, route, allowed, remaining, retry_after, created_at)
         VALUES ('acme', ?, '/a', 1, 1, 0, '2026-01-01T00:00:00.000Z')
-      `).bind(key),
-      db.prepare(`
+      `,
+        )
+        .bind(key),
+      db
+        .prepare(
+          `
         INSERT INTO audit_logs (tenant_id, api_key, actor, action_type, message, severity)
         VALUES ('acme', ?, 'admin', 'policy_created', 'm', 'Medium')
-      `).bind(key),
+      `,
+        )
+        .bind(key),
     ]);
 
     for (const q of harden.queries) await db.prepare(q).run();
@@ -35,7 +43,9 @@ describe("migration 0002 on legacy data", () => {
     expect(apiKey).toMatchObject({ key_hash: null, legacy_key: key, status: "active" });
     expect(apiKey.key_hint).toBe("edge_limit_c••••cccc");
 
-    const summary = await db.prepare("SELECT api_key_id, tenant_id, total_requests, blocked_requests FROM logs_summary").first();
+    const summary = await db
+      .prepare("SELECT api_key_id, tenant_id, total_requests, blocked_requests FROM logs_summary")
+      .first();
     expect(summary).toEqual({ api_key_id: 1, tenant_id: "acme", total_requests: 7, blocked_requests: 2 });
 
     const dump = JSON.stringify([

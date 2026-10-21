@@ -37,8 +37,13 @@ export function Playground() {
     setSending(true);
     setError(undefined);
     try {
-      const result = await api.check(tenantId, selected, session.apiKey, identifier.trim() || undefined);
-      const attempt = { ...result, route: selected, identifier: identifier.trim(), at: new Date().toLocaleTimeString() };
+      const decision = await api.check(tenantId, selected, session.apiKey, identifier.trim() || undefined);
+      const attempt = {
+        ...decision,
+        route: selected,
+        identifier: identifier.trim(),
+        at: new Date().toLocaleTimeString(),
+      };
       setAttempts((previous) => [attempt, ...previous].slice(0, 8));
     } catch (err) {
       setError(errorMessage(err));

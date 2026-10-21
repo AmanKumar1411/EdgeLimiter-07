@@ -35,7 +35,11 @@ function matches(log: RequestLog, filters: { outcome: string; route: string; key
 
 export function Activity() {
   const { tenantId, session } = useTenant();
-  const report = useApi(`securityReport:${tenantId}:${session.apiKey}`, () => api.securityReport(tenantId, session.apiKey), 15_000);
+  const report = useApi(
+    `securityReport:${tenantId}:${session.apiKey}`,
+    () => api.securityReport(tenantId, session.apiKey),
+    15_000,
+  );
   const [params, setParams] = useSearchParams();
   const filters = {
     outcome: params.get("outcome") ?? "",

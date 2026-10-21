@@ -64,16 +64,20 @@ keyRoutes.post("/register", async (c) => {
   let userInsert: D1Result;
   try {
     [userInsert] = await c.env.DB.batch([
-      c.env.DB.prepare(`
+      c.env.DB.prepare(
+        `
         INSERT INTO users (email, role, tenant_id)
         SELECT ?1, ?2, ?3
         WHERE ?4 = 1 OR NOT EXISTS (SELECT 1 FROM users WHERE tenant_id = ?3)
-      `).bind(email, role, tenantId, isAdmin ? 1 : 0),
-      c.env.DB.prepare(`
+      `,
+      ).bind(email, role, tenantId, isAdmin ? 1 : 0),
+      c.env.DB.prepare(
+        `
         INSERT INTO api_keys (user_id, key_hash, key_hint, status)
         SELECT last_insert_rowid(), ?, ?, 'active'
         WHERE changes() = 1
-      `).bind(await hashApiKey(apiKey), maskApiKey(apiKey)),
+      `,
+      ).bind(await hashApiKey(apiKey), maskApiKey(apiKey)),
     ]);
   } catch (err) {
     // UNIQUE(email) lost a race with a concurrent registration.
@@ -91,8 +95,7 @@ keyRoutes.post("/register", async (c) => {
 keyRoutes.get("/keys", async (c) => {
   const owner = await authenticate(c);
   if (owner instanceof Response) return owner;
-  const tenantId =
-    owner.role === "super_admin" ? cleanString(c.req.query("tenantId"), MAX_TENANT_ID_LENGTH) : null;
+  const tenantId = owner.role === "super_admin" ? cleanString(c.req.query("tenantId"), MAX_TENANT_ID_LENGTH) : null;
 
   const columns = "a.id, a.key_hint, a.status, a.created_at, a.revoked_at, u.email";
   const query = tenantId
@@ -166,11 +169,13 @@ keyRoutes.post("/keys/:id/revoke", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id < 1) return c.json({ error: "Invalid key id" }, 400);
 
-  const key = await c.env.DB.prepare(`
+  const key = await c.env.DB.prepare(
+    `
     SELECT a.id, a.user_id, a.key_hint, a.status, u.tenant_id, u.email
     FROM api_keys a JOIN users u ON u.id = a.user_id
     WHERE a.id = ?
-  `)
+  `,
+  )
     .bind(id)
     .first<{ user_id: number; key_hint: string; status: string; tenant_id: string | null; email: string }>();
 

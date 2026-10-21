@@ -234,6 +234,8 @@ Steps:
 2. Optional dead-letter queue: `npx wrangler queues create rate-limit-logs-dlq`, then uncomment `dead_letter_queue` in `wrangler.toml`.
 3. Set `[vars]` in `wrangler.toml`: restrict `CORS_ORIGINS` to your dashboard origin, and set `SECURITY_LOG_RETENTION_DAYS` if you want retention.
 4. `npx wrangler d1 migrations apply edge-limiter-db --remote && npx wrangler deploy`
+
+   If the Worker is connected to Git (Workers Builds), every push to `main` deploys it automatically, so apply migrations **before** pushing code that needs them. To make that automatic, set the build's deploy command to `npx wrangler d1 migrations apply edge-limiter-db --remote && npx wrangler deploy`; the build token needs D1 edit permission.
 5. Dashboard: `cd dashboard && VITE_API_BASE=https://<worker-host> npm run build`, then host `dist/` as a static site (Cloudflare Pages, etc.).
 
 Recommended in production: a Cloudflare WAF rate-limiting rule in front of `/check` and `/register` for unauthenticated floods, and Workers Logs or Logpush for the structured error logs.
@@ -251,7 +253,7 @@ Daily at 00:00 UTC: prunes `security_logs` older than `SECURITY_LOG_RETENTION_DA
 | Symptom | Cause / fix |
 |---|---|
 | `migrations apply` fails: `NOT NULL constraint failed: logs_summary.tenant_id` | Fixed in `0002`. Databases created before `users.tenant_id` existed have tenant-less users; their usage now stays in `logs_summary_legacy`. A failed run rolls back completely, so pull the fix and re-run. |
-| `npm install` fails with `Cannot read properties of null (reading 'edgesOut')` | An npm arborist bug triggered by peer sets in this tree. Use `npm install --legacy-peer-deps`. |
+| Cloudflare build fails at `npm clean-install` with `ERESOLVE … @cloudflare/workers-types` | `wrangler` and `@cloudflare/workers-types` must agree: wrangler 4.15x expects workers-types `^5`. Keep them in step, and never commit a lockfile produced with `--legacy-peer-deps` (CI's `npm ci` rejects it). |
 | Every request returns `401` right after upgrading | The migration was applied but the new Worker isn't deployed yet (or the reverse). Deploy immediately. |
 | A policy change isn't enforced everywhere | KV propagation, up to ~60s. |
 | Dashboard shows `Failed to connect` | `VITE_API_BASE` is wrong, or the dashboard origin isn't in `CORS_ORIGINS`. |
